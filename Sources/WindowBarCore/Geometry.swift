@@ -1,6 +1,13 @@
 import Foundation
 
 public enum Geometry {
+    /// Smallest window that gets a header. Applied to BOTH the AX frame (scan) and the on-screen CG frame
+    /// (render): Stage Manager keeps the AX frame at full size while the CG frame is a strip thumbnail.
+    public static let minimumEligibleWidth = 280.0
+    public static let minimumEligibleHeight = 120.0
+    public static func isEligibleSize(_ r: Rect) -> Bool {
+        r.isValid && r.width >= minimumEligibleWidth && r.height >= minimumEligibleHeight
+    }
     /// AppKit's primary display bottom-left -> AX/CG global upper-left. This is
     /// deliberately NOT based on NSScreen.main (which follows keyboard focus).
     public static func flip(_ r: Rect, primaryHeight: Double) -> Rect {

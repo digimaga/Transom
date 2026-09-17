@@ -247,6 +247,9 @@ final class AppController: NSObject {
         for snapshot in snapshots {
             let token = snapshot.token
             guard valid(token), let target = byID[token.windowID],
+                  // The on-screen frame must ALSO be a real window: Stage Manager strip thumbnails keep the
+                  // AX frame at full size while the CG frame shrinks to ~100pt (observed on macOS 26).
+                  Geometry.isEligibleSize(target.frame),
                   !geometry.fullFrames.contains(where: { $0.approximatelyEquals(target.frame, tolerance: 1) }),
                   let screen = Geometry.bestScreen(for: target.frame, visibleFrames: geometry.visibleFrames),
                   let external = Geometry.externalHeader(for: target.frame, in: screen) else {

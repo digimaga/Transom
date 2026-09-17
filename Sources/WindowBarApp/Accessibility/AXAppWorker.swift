@@ -128,7 +128,7 @@ final class AXAppWorker {
                     minimized: (values[kAXMinimizedAttribute] as? NSNumber)?.boolValue ?? false,
                     fullscreen: (values["AXFullScreen"] as? NSNumber)?.boolValue ?? false,
                     modal: modal || hasSheets,
-                    eligible: standard && frame.isValid && frame.width >= 280 && frame.height >= 120,
+                    eligible: standard && Geometry.isEligibleSize(frame),
                     headings: headings, observedAt: ProcessInfo.processInfo.systemUptime)
                 records[id] = Record(token: token, element: element, snapshot: snapshot)
                 seen.insert(token)
