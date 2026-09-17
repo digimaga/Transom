@@ -1,28 +1,28 @@
 Building for debugging...
 [0/13] Write sources
 [2/13] Write swift-version--1BA0962812E73E12.txt
-[4/18] Compiling WindowBarCore OperationPermit.swift
-[5/18] Compiling WindowBarCore Geometry.swift
-[6/18] Compiling WindowBarCore HeaderLayout.swift
-[7/18] Emitting module WindowBarCore
-[8/18] Compiling WindowBarCore Models.swift
-[9/19] Wrapping AST for WindowBarCore for debugging
-[11/21] Compiling WindowBarCoreTests WindowBarCoreTests.swift
-[12/21] Emitting module WindowBarCoreTests
-[13/22] <PROJECT_ROOT>/.build/x86_64-unknown-linux-gnu/debug/WindowBarPackageDiscoveredTests.derived/all-discovered-tests.swift
+[4/18] Compiling TransomCore OperationPermit.swift
+[5/18] Compiling TransomCore Geometry.swift
+[6/18] Compiling TransomCore HeaderLayout.swift
+[7/18] Emitting module TransomCore
+[8/18] Compiling TransomCore Models.swift
+[9/19] Wrapping AST for TransomCore for debugging
+[11/21] Compiling TransomCoreTests TransomCoreTests.swift
+[12/21] Emitting module TransomCoreTests
+[13/22] <PROJECT_ROOT>/.build/x86_64-unknown-linux-gnu/debug/TransomPackageDiscoveredTests.derived/all-discovered-tests.swift
 [14/22] Write sources
-[15/22] Wrapping AST for WindowBarCoreTests for debugging
-[17/25] Emitting module WindowBarPackageDiscoveredTests
-[18/25] Compiling WindowBarPackageDiscoveredTests WindowBarCoreTests.swift
-[19/25] Compiling WindowBarPackageDiscoveredTests all-discovered-tests.swift
-[20/26] <PROJECT_ROOT>/.build/x86_64-unknown-linux-gnu/debug/WindowBarPackageTests.derived/runner.swift
+[15/22] Wrapping AST for TransomCoreTests for debugging
+[17/25] Emitting module TransomPackageDiscoveredTests
+[18/25] Compiling TransomPackageDiscoveredTests TransomCoreTests.swift
+[19/25] Compiling TransomPackageDiscoveredTests all-discovered-tests.swift
+[20/26] <PROJECT_ROOT>/.build/x86_64-unknown-linux-gnu/debug/TransomPackageTests.derived/runner.swift
 [21/26] Write sources
-[22/26] Wrapping AST for WindowBarPackageDiscoveredTests for debugging
-[24/28] Emitting module WindowBarPackageTests
-[25/28] Compiling WindowBarPackageTests runner.swift
-[26/29] Wrapping AST for WindowBarPackageTests for debugging
+[22/26] Wrapping AST for TransomPackageDiscoveredTests for debugging
+[24/28] Emitting module TransomPackageTests
+[25/28] Compiling TransomPackageTests runner.swift
+[26/29] Wrapping AST for TransomPackageTests for debugging
 [27/29] Write Objects.LinkFileList
-[28/29] Linking WindowBarPackageTests.xctest
+[28/29] Linking TransomPackageTests.xctest
 Build complete! (7.52s)
 Test Suite 'All tests' started at 2026-09-10 05:45:26.027
 Test Suite 'debug.xctest' started at 2026-09-10 05:45:26.039
