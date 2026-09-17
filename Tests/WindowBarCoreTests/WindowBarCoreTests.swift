@@ -48,6 +48,13 @@ import Foundation
         let first = try #require(Geometry.reserveSpace(for: input, in: screen))
         #expect(Geometry.reserveSpace(for: first, in: screen) == first)
     }
+    @Test func testMaximizedFrameLeavesHeaderSpaceOnly() throws {
+        let frame = try #require(Geometry.maximizedFrame(in: screen))
+        #expect(frame.x == screen.x && frame.width == screen.width)
+        #expect(frame.y == screen.y + Geometry.headerHeight && frame.maxY == screen.maxY)
+        #expect(Geometry.externalHeader(for: frame, in: screen) != nil)
+        #expect(Geometry.maximizedFrame(in: Rect(x: 0, y: 0, width: 500, height: 120)) == nil)
+    }
     @Test func testReserveRejectsImpossibleScreen() {
         #expect(Geometry.reserveSpace(for: Rect(x: 0, y: 0, width: 600, height: 500),
                                       in: Rect(x: 0, y: 0, width: 500, height: 120)) == nil)
@@ -110,7 +117,7 @@ import Foundation
     @Test func testNoOverlappingOrOutOfBoundsControls() {
         for width in stride(from: 280.0, through: 1800.0, by: 13) {
             let layout = HeaderLayout.make(width: width, appWidth: 185, menuWidths: [55, 65, 75, 90, 58, 100])
-            let rects = [layout.app] + layout.menus + (layout.overflow.map { [$0] } ?? []) + [layout.title]
+            let rects = [layout.app] + layout.menus + (layout.overflow.map { [$0] } ?? []) + [layout.title] + layout.controls
             for rect in rects {
                 #expect(rect.width >= 0)
                 #expect(rect.maxX <= width + 0.01)
@@ -124,16 +131,27 @@ import Foundation
         #expect(first.x == layout.app.maxX + 4)
         for pair in zip(layout.menus, layout.menus.dropFirst()) { #expect(pair.1.x == pair.0.maxX) }
         #expect(layout.title.x >= layout.menus.last!.maxX)
-        #expect(layout.title.maxX == 1200 - 5)
+        #expect(layout.title.maxX == 1200 - 5 - HeaderLayout.controlWidth * 3)
         let narrow = HeaderLayout.make(width: 320, appWidth: 140, menuWidths: [50, 50, 70, 80])
         let overflow = try #require(narrow.overflow)
         #expect(narrow.title.x >= overflow.maxX)
+    }
+    @Test func testWindowControlsSitFlushAtRightEdge() {
+        for width in [280.0, 600, 1800] {
+            let layout = HeaderLayout.make(width: width, appWidth: 130, menuWidths: [50, 50, 70, 80])
+            #expect(layout.controls.count == 3)
+            #expect(layout.controls.last?.maxX == width)
+            for pair in zip(layout.controls, layout.controls.dropFirst()) { #expect(pair.1.x == pair.0.maxX) }
+            #expect(layout.controls.allSatisfy { $0.width == HeaderLayout.controlWidth && $0.height == 30 })
+            #expect(layout.title.maxX <= layout.controls[0].x)
+            #expect((layout.overflow?.maxX ?? layout.menus.last?.maxX ?? layout.app.maxX) <= layout.controls[0].x)
+        }
     }
     @Test func testNoMenusStillShowsTitle() {
         let layout = HeaderLayout.make(width: 600, appWidth: 130, menuWidths: [])
         #expect(layout.overflow == nil)
         #expect(layout.visibleMenuCount == 0)
-        #expect(layout.title.width > 400)
+        #expect(layout.title.width > 300) // 600 minus app, insets and the three 40pt window controls
     }
 }
 

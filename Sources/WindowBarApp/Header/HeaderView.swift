@@ -37,6 +37,10 @@ final class HeaderView: NSView {
     private let appButton = ActionButton(title: "")
     private let titleSurface = DragSurface(frame: .zero)
     private let overflowButton = ActionButton(title: "»")
+    /// Windows-style window controls at the right edge, left to right: minimize, maximize, close.
+    private let minimizeButton = ActionButton(title: "")
+    private let maximizeButton = ActionButton(title: "")
+    private let closeButton = ActionButton(title: "")
     private var menuButtons: [ActionButton] = []
     private var headings: [MenuHeading] = []
     private var currentLayout: HeaderLayout?
@@ -49,6 +53,9 @@ final class HeaderView: NSView {
     var onDragBegan: (() -> Void)?
     var onDragMoved: (() -> Void)?
     var onDragEnded: (() -> Void)?
+    var onMinimize: (() -> Void)?
+    var onMaximize: (() -> Void)?
+    var onClose: (() -> Void)?
 
     override var isFlipped: Bool { true }
     override init(frame frameRect: NSRect) {
@@ -56,6 +63,19 @@ final class HeaderView: NSView {
         addSubview(appButton)
         addSubview(titleSurface)
         addSubview(overflowButton)
+        for (button, symbol, label, action) in [
+            (minimizeButton, "minus", "最小化", { [weak self] in self?.onMinimize?() }),
+            (maximizeButton, "square", "最大化／元のサイズに戻す", { [weak self] in self?.onMaximize?() }),
+            (closeButton, "xmark", "閉じる", { [weak self] in self?.onClose?() })
+        ] as [(ActionButton, String, String, () -> Void)] {
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+                .withSymbolConfiguration(.init(pointSize: 11, weight: .regular))
+            button.imagePosition = .imageOnly
+            button.toolTip = label
+            button.setAccessibilityLabel(label)
+            button.invoke = action
+            addSubview(button)
+        }
         appButton.font = .systemFont(ofSize: 12, weight: .semibold)
         appButton.imagePosition = .imageLeft
         appButton.imageScaling = .scaleProportionallyDown
@@ -124,6 +144,7 @@ final class HeaderView: NSView {
         }
         overflowButton.isHidden = layout.overflow == nil
         if let rect = layout.overflow { overflowButton.frame = rect.cgRect }
+        for (button, rect) in zip([minimizeButton, maximizeButton, closeButton], layout.controls) { button.frame = rect.cgRect }
     }
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()

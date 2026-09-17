@@ -259,6 +259,33 @@ final class AXAppWorker {
             return actual
         }, completion: completion)
     }
+    /// Presses one of the target window's own standard buttons (AXMinimizeButton / AXCloseButton) exactly
+    /// once. The button element is read from the exact window element, so nothing else can be hit. Close
+    /// is not undoable: the application's own "unsaved changes" dialog is the only safety net, and a
+    /// cannotComplete answer is reported as "uncertain" with no retry, like a menu command.
+    func pressWindowButton(_ token: WindowToken, attribute: String, permit: OperationPermit,
+                           completion: @escaping @MainActor (Result<Void, Error>) -> Void) {
+        submit({ worker in
+            let record = try worker.exactRecord(token)
+            let budget = AXBudget(seconds: 0.8)
+            guard try AX.string(record.element, kAXRoleAttribute, budget: budget) == kAXWindowRole,
+                  try AX.string(record.element, kAXSubroleAttribute, budget: budget) == kAXStandardWindowSubrole,
+                  try AX.bool(record.element, "AXModal", budget: budget) != true,
+                  try !AX.hasSheet(record.element, budget: budget) else { throw WindowBarError.focusMismatch }
+            guard let button = AX.element(try AX.value(record.element, attribute, budget: budget)),
+                  try AX.actions(button, budget: budget).contains(kAXPressAction) else {
+                throw WindowBarError.unavailable("このウィンドウにはそのボタンがありません。")
+            }
+            guard try AX.bool(button, kAXEnabledAttribute, budget: budget) != false else {
+                throw WindowBarError.unavailable("このウィンドウではそのボタンが無効です。")
+            }
+            guard permit.isValid(), worker.lifetime.isValid(), permit.commitOnce() else { throw WindowBarError.cancelled }
+            AX.configure(button)
+            let result = AXUIElementPerformAction(button, kAXPressAction as CFString)
+            if result == .cannotComplete { throw WindowBarError.actionUncertain }
+            guard result == .success else { throw WindowBarError.ax(result.rawValue) }
+        }, completion: completion)
+    }
     func reserve(_ token: WindowToken, expected: Rect, desired: Rect, permit: OperationPermit,
                  completion: @escaping @MainActor (Result<Rect, Error>) -> Void) {
         submit({ worker in
@@ -267,15 +294,21 @@ final class AXAppWorker {
                   try AX.frame(record.element).approximatelyEquals(expected, tolerance: 2),
                   AX.settable(record.element, kAXPositionAttribute) else { throw WindowBarError.stale }
             let sizeChanges = abs(expected.height - desired.height) > 0.5 || abs(expected.width - desired.width) > 0.5
-            if sizeChanges {
-                guard AX.settable(record.element, kAXSizeAttribute) else {
-                    throw WindowBarError.unavailable("このウィンドウはサイズを変更できません。")
-                }
-                try AX.setSize(record.element, desired)
+            if sizeChanges, !AX.settable(record.element, kAXSizeAttribute) {
+                throw WindowBarError.unavailable("このウィンドウはサイズを変更できません。")
             }
             // Position + size is not atomic. Do not silently rollback over later user changes.
+            // AppKit keeps a window inside its screen at each step, so the order matters: when growing
+            // (maximize) move first, then resize; when shrinking (restore) resize first, then move.
+            // Otherwise the intermediate frame is clamped and the final frame is wrong.
+            let grows = desired.width > expected.width + 0.5 || desired.height > expected.height + 0.5
+            if grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
+            if sizeChanges {
+                guard permit.isValid(), worker.lifetime.isValid() else { throw WindowBarError.cancelled }
+                try AX.setSize(record.element, desired)
+            }
             guard permit.isValid(), worker.lifetime.isValid() else { throw WindowBarError.cancelled }
-            try AX.setPosition(record.element, Point(x: desired.x, y: desired.y))
+            if !grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
             let actual = try AX.frame(record.element)
             guard actual.approximatelyEquals(desired, tolerance: 2) else {
                 throw WindowBarError.unavailable("アプリが配置を補正しました。実際の配置を確認してください。")

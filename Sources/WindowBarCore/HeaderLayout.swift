@@ -6,13 +6,23 @@ public struct HeaderLayout: Sendable {
     public let menus: [Rect]
     public let overflow: Rect?
     public let visibleMenuCount: Int
+    /// Windows-style window controls at the right edge: minimize, maximize, close (in that order).
+    public let controls: [Rect]
+
+    /// Width of one window-control button; three of them sit flush at the right edge.
+    public static let controlWidth = 40.0
+    public static let controlCount = 3
 
     public static func make(width: Double, height: Double = Geometry.headerHeight,
                             appWidth: Double, menuWidths: [Double]) -> HeaderLayout {
         let width = max(0, width), gap = 4.0, inset = 5.0
-        let appW = min(max(36, appWidth), max(0, width - 2 * inset - 32))
+        let controlsWidth = controlWidth * Double(controlCount)
+        let controls = (0..<controlCount).map { index in
+            Rect(x: width - controlsWidth + Double(index) * controlWidth, y: 0, width: controlWidth, height: height)
+        }
+        let appW = min(max(36, appWidth), max(0, width - controlsWidth - 2 * inset - 32))
         let app = Rect(x: inset, y: 0, width: appW, height: height)
-        let remaining = max(0, width - app.maxX - 2 * gap - inset)
+        let remaining = max(0, width - controlsWidth - app.maxX - 2 * gap - inset)
         let titleMinimum = min(64.0, max(0, remaining - (menuWidths.isEmpty ? 0 : 28)))
         let allWidth = menuWidths.reduce(0, +)
         var count = menuWidths.count
@@ -37,8 +47,8 @@ public struct HeaderLayout: Sendable {
         let overflow = overflowWidth > 0 ? Rect(x: x, y: 0, width: overflowWidth, height: height) : nil
         if let overflow { x = overflow.maxX }
         let titleX = count > 0 || overflow != nil ? x + gap : x
-        let title = Rect(x: titleX, y: 0, width: max(0, width - inset - titleX), height: height)
+        let title = Rect(x: titleX, y: 0, width: max(0, width - controlsWidth - inset - titleX), height: height)
         return HeaderLayout(app: app, title: title, menus: menus,
-                            overflow: overflow, visibleMenuCount: count)
+                            overflow: overflow, visibleMenuCount: count, controls: controls)
     }
 }

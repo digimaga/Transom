@@ -50,6 +50,13 @@ public enum Geometry {
         guard cornerExtent.isFinite, cornerExtent > 0 else { return header }
         return Rect(x: header.x, y: header.y, width: header.width, height: header.height + cornerExtent)
     }
+    /// Windows-style "maximize": the usable screen area minus the header's own height at the top, so the
+    /// header stays visible above the window. Applied ONLY when the user presses the header's maximize
+    /// button for that one window; pressing it again restores the frame recorded before.
+    public static func maximizedFrame(in screen: Rect, headerHeight: Double = headerHeight) -> Rect? {
+        guard screen.isValid, headerHeight > 0, screen.height > headerHeight + 160 else { return nil }
+        return Rect(x: screen.x, y: screen.y + headerHeight, width: screen.width, height: screen.height - headerHeight)
+    }
     /// Called ONLY after an explicit user command for ONE focused window.
     public static func reserveSpace(for window: Rect, in screen: Rect,
                                     headerHeight: Double = headerHeight, minimumHeight: Double = 160) -> Rect? {

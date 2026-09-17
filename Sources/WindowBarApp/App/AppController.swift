@@ -48,6 +48,8 @@ final class AppController: NSObject {
     private var dirtyApplications = Set<Int32>()
     private var reservePermit: OperationPermit?
     private var reserveTarget: WindowToken?
+    /// Frames recorded by the header's maximize button, restored by pressing it again.
+    private var restoreFrames: [WindowToken: Rect] = [:]
     private var extraPermits: [OperationPermit] = []
     private var lastFrontmostPID: Int32?
     private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
@@ -393,12 +395,71 @@ final class AppController: NSObject {
         }
         panel.headerView.onDragMoved = { [weak self] in self?.drag.moved() }
         panel.headerView.onDragEnded = { [weak self] in self?.drag.ended() }
+        panel.headerView.onMinimize = { [weak self] in self?.pressWindowButton(token, attribute: "AXMinimizeButton") }
+        panel.headerView.onClose = { [weak self] in self?.pressWindowButton(token, attribute: "AXCloseButton") }
+        panel.headerView.onMaximize = { [weak self] in self?.toggleMaximize(token) }
         return panel
+    }
+    /// Minimize / close through the window's own standard button. Only the exact window can be hit; the
+    /// request is sent once and never retried (a close may be answered by the app's own save dialog).
+    private func pressWindowButton(_ token: WindowToken, attribute: String) {
+        guard valid(token), let worker = worker(for: token) else { return }
+        menus.cancel(); drag.cancel()
+        let permit = OperationPermit(lifetime: 3)
+        extraPermits.append(permit)
+        worker.pressWindowButton(token, attribute: attribute, permit: permit) { [weak self] result in
+            permit.cancel()
+            guard let self else { return }
+            if case .failure(let error) = result { self.status(error.localizedDescription) }
+            self.dirtyApplications.insert(token.pid)
+            self.fastPollUntil = ProcessInfo.processInfo.systemUptime + 0.3
+            self.requestMetadata()
+        }
+    }
+    /// Windows-style maximize: fill the usable screen area below the header; pressing again restores the
+    /// frame recorded here. This is the explicit user command that authorizes moving/resizing this window.
+    private func toggleMaximize(_ token: WindowToken) {
+        guard valid(token), let worker = worker(for: token),
+              let actual = metadata?.byID[token.windowID]?.frame,
+              let geometry = ScreenGeometry.current(),
+              let screen = Geometry.bestScreen(for: actual, visibleFrames: geometry.visibleFrames),
+              let maximized = Geometry.maximizedFrame(in: screen) else {
+            status("このウィンドウは最大化できません。")
+            return
+        }
+        menus.cancel(); drag.cancel(); reservePermit?.cancel()
+        let restoring = actual.approximatelyEquals(maximized, tolerance: 2)
+        guard let desired = restoring ? restoreFrames[token] : maximized else {
+            status("元のサイズが記録されていないため戻せません。ドラッグで調整してください。")
+            return
+        }
+        let permit = OperationPermit(lifetime: 5)
+        reservePermit = permit; reserveTarget = token
+        _ = NSRunningApplication(processIdentifier: token.pid)?.activate() // best effort; focus() verifies
+        worker.focus(token, permit: permit) { [weak self] focusResult in
+            guard let self, permit.isValid() else { return }
+            if case .failure(let error) = focusResult { self.status(error.localizedDescription); permit.cancel(); return }
+            worker.reserve(token, expected: actual, desired: desired, permit: permit) { [weak self] result in
+                guard let self else { return }
+                permit.cancel()
+                self.reserveTarget = nil
+                switch result {
+                case .success:
+                    if restoring { self.restoreFrames[token] = nil } else { self.restoreFrames[token] = actual }
+                    self.status(restoring ? "元のサイズに戻しました。" : "最大化しました。")
+                case .failure(let error): self.status(error.localizedDescription)
+                }
+                self.dirtyApplications.insert(token.pid)
+                self.fastPollUntil = ProcessInfo.processInfo.systemUptime + 0.3
+                self.requestMetadata()
+            }
+        }
     }
     private func removePanel(_ token: WindowToken) {
         menus.cancel(ifTarget: token)
         if drag.target == token { drag.cancel() }
         panels.removeValue(forKey: token)?.close()
+        restoreFrames[token] = nil
     }
     private func activate(_ token: WindowToken) {
         guard valid(token), let worker = worker(for: token) else { return }
