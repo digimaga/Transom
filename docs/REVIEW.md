@@ -32,6 +32,8 @@
 
 **一部解消（2026-09-17）：WindowServerとの実際の並び順。** macOS 26／Apple Siliconで実機確認した。透明パネルはCGの `optionOnScreenOnly` 一覧に含まれ、`OrderingPolicy.isSafe` のメタデータ照合が機能し、バーは対象窓の直前へ正しく表示された（前面の別アプリ窓が両者より前のとき背面窓のバーが浮かないことも確認）。ただし非公開経路（SkyLightのSLSTransactionSetWindowLevel）はこのOSでコード -5（setLevel失敗）を返し使えなかった。CGErrorの戻り値も正規のコードではなく、ABIが想定と異なる。現在は3回失敗した時点で非公開経路を自動停止し、以後は公開相対order＋メタデータ照合のみで動作する（バー表示は正常）。多数窓・複雑な重なりでの網羅確認とSkyLight ABIの精査は未完了。
 
+**解消（2026-09-17）：Chromium/Electron系アプリでの「フォーカス確認不可」。** Claude（Electron）の外付けバーからメニューを開くと、`validateFocus` が0.6秒以内に通らず拒否された。理由コードを記録する診断（`AXAppWorker.lastFocusMismatch`、`focus` カテゴリのログ。文書名等は含まない）を追加して特定したところ、Chromium系アプリが前面のときシステム全体の `AXFocusedApplication` が値を返さない（nil）ことが原因だった。対策として `AXAppWorker.frontmostPID()` を追加し、AXが無回答（nil）のときに限り `NSWorkspace.frontmostApplication` を前面判定に使う。AXが別PIDを返す場合は従来どおり不一致として拒否し、対象窓のAXFocusedWindow一致・ウィンドウID一致・役割・状態の検証は変更していない。`validateWitness`（文脈の再照合）とメニュー見出しの照合にも理由コードのログを追加した。修正後、Claudeのメニューが無効項目のグレー表示を含めて正しく展開した。Chrome・Safari等の他のChromium/WebKit系アプリでの再確認は未実施。
+
 **解消（2026-09-17）：NSMenu前後のフォーカスとメニュー実行の対象一致。** WindowBarLabの同名2窓で確認した。A窓のバーのコピーでクリップボードにA窓の行が入り、A窓のバーの検証保存で `window=A`、B窓のバーの検証保存で `window=B` が記録された。各バーは自分の対象窓に対してのみ作用し、取り違えは観測されなかった。なお対象窓が他窓に隠れてメニューボタンを押せない状況では操作が無反応（実行されない安全側）になる。
 
 **P0：NSMenu前後のフォーカス。** 同名2窓、選択テキスト、保存で、元アプリの選択状態が残り、コマンドが適切な窓へ作用するかを確認する。メニューを閉じる際のフォーカス復帰や動的な有効状態の扱いにアプリ差がある。厳密な参照照合が正当な操作も拒否する可能性がある。

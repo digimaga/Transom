@@ -54,10 +54,18 @@ extension AXAppWorker {
     }
     private func validateWitness(_ session: AXMenuSession) throws {
         let current = try witness(session.target)
-        guard FocusPolicy.permits(expected: session.witness.stamp, current: current.stamp,
-                                  frontmostPID: try AX.focusedPID(), isModal: false, isMinimized: false),
-              AX.equal(current.focusedElement, session.witness.focusedElement),
-              AX.equal(current.selectionRange, session.witness.selectionRange) else { throw WindowBarError.stale }
+        let reason: String?
+        if !FocusPolicy.permits(expected: session.witness.stamp, current: current.stamp,
+                                frontmostPID: try frontmostPID(), isModal: false, isMinimized: false) {
+            reason = current.stamp == session.witness.stamp ? "frontmost-pid" : "context-stamp"
+        } else if !AX.equal(current.focusedElement, session.witness.focusedElement) { reason = "focused-element" }
+        else if !AX.equal(current.selectionRange, session.witness.selectionRange) { reason = "selection-range" }
+        else { reason = nil }
+        if let reason {
+            // Reason code only; never the title, document or selection itself.
+            AXAppWorker.focusLogger.info("メニュー文脈の再照合に失敗しました。理由コード: \(reason, privacy: .public)")
+            throw WindowBarError.stale
+        }
     }
     func prepareMenu(for target: WindowToken, headings requested: [MenuHeading],
                      permit: OperationPermit, completion: @escaping @MainActor (Result<PreparedMenu, Error>) -> Void) {
@@ -131,9 +139,15 @@ private final class AXMenuReader {
         let tops = try AX.children(root, budget: budget)
         var entries: [MenuEntry] = []
         for heading in headings {
-            guard tops.indices.contains(heading.index) else { throw WindowBarError.stale }
+            guard tops.indices.contains(heading.index) else {
+                AXAppWorker.focusLogger.info("メニュー見出しの照合に失敗しました。理由コード: heading-index")
+                throw WindowBarError.stale
+            }
             let top = tops[heading.index]
-            guard try AX.string(top, kAXTitleAttribute, budget: budget) == heading.title else { throw WindowBarError.stale }
+            guard try AX.string(top, kAXTitleAttribute, budget: budget) == heading.title else {
+                AXAppWorker.focusLogger.info("メニュー見出しの照合に失敗しました。理由コード: heading-title")
+                throw WindowBarError.stale
+            }
             let role = try AX.string(top, kAXRoleAttribute, budget: budget) ?? ""
             let step = AXPathStep(index: heading.index, element: top, role: role, title: heading.title)
             var children = readChildren(of: top, path: [step], depth: 0)

@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import ApplicationServices
+import OSLog
 import WindowBarCore
 
 /// Owns every AXUIElement and menu command reference for one process instance.
@@ -153,19 +155,39 @@ final class AXAppWorker {
               try AX.windowID(record.element) == token.windowID else { throw WindowBarError.stale }
         return record
     }
+    /// Diagnostics only: the last reason validateFocus failed (a fixed code, never a title/URL).
+    private(set) var lastFocusMismatch = ""
+    static let focusLogger = Logger(subsystem: "dev.local.WindowBar", category: "focus")
+
+    /// Frontmost process as seen by the system-wide AX element. Chromium/Electron apps (e.g. Claude, Chrome)
+    /// can leave AXFocusedApplication unanswered (nil) while frontmost; ONLY in that no-answer case the
+    /// workspace's notion of the frontmost app is used. A different pid from AX is still a mismatch.
+    func frontmostPID() throws -> Int32? {
+        if let pid = try AX.focusedPID() { return pid }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier
+    }
+
     func validateFocus(_ token: WindowToken) throws -> Record {
         let record = try exactRecord(token)
-        guard try AX.focusedPID() == token.pid,
-              let focused = AX.element(try AX.value(application, kAXFocusedWindowAttribute)),
-              CFEqual(focused, record.element),
-              try AX.windowID(focused) == token.windowID,
-              try AX.string(record.element, kAXRoleAttribute) == kAXWindowRole,
-              try AX.string(record.element, kAXSubroleAttribute) == kAXStandardWindowSubrole,
-              try AX.bool(record.element, kAXMinimizedAttribute) != true,
-              try AX.bool(record.element, "AXFullScreen") != true,
-              try AX.bool(record.element, "AXModal") != true,
-              AX.elements(try AX.value(record.element, "AXSheets")).isEmpty else {
-            throw WindowBarError.focusMismatch
+        do {
+            let reason: String?
+            let focused = AX.element(try AX.value(application, kAXFocusedWindowAttribute))
+            // The exact-window checks below stay in force regardless of how the frontmost pid was obtained.
+            let focusedPID = try frontmostPID()
+            if focusedPID != token.pid { reason = "frontmost-pid(observed=\(focusedPID.map(String.init) ?? "nil"))" }
+            else if focused == nil || !CFEqual(focused!, record.element) { reason = "focused-window" }
+            else if try AX.windowID(focused!) != token.windowID { reason = "window-id" }
+            else if try AX.string(record.element, kAXRoleAttribute) != kAXWindowRole { reason = "role" }
+            else if try AX.string(record.element, kAXSubroleAttribute) != kAXStandardWindowSubrole { reason = "subrole" }
+            else if try AX.bool(record.element, kAXMinimizedAttribute) == true { reason = "minimized" }
+            else if try AX.bool(record.element, "AXFullScreen") == true { reason = "fullscreen" }
+            else if try AX.bool(record.element, "AXModal") == true { reason = "modal" }
+            else if !AX.elements(try AX.value(record.element, "AXSheets")).isEmpty { reason = "sheets" }
+            else { reason = nil }
+            if let reason { lastFocusMismatch = reason; throw WindowBarError.focusMismatch }
+        } catch let error as WindowBarError {
+            if case .ax(let code) = error { lastFocusMismatch = "ax-error(\(code))" }
+            throw error
         }
         return record
     }
@@ -194,6 +216,8 @@ final class AXAppWorker {
                 if (try? worker.validateFocus(token)) != nil { return }
                 Thread.sleep(forTimeInterval: 0.025) // worker only; bounded, no MainActor blocking
             } while ProcessInfo.processInfo.systemUptime < deadline
+            // Reason code only (frontmost-pid / focused-window / subrole / ax-error(n) ...). No titles or URLs.
+            AXAppWorker.focusLogger.info("フォーカス検証が0.6秒以内に通りませんでした。最終理由コード: \(worker.lastFocusMismatch, privacy: .public)")
             throw WindowBarError.focusMismatch
         }, completion: completion)
     }
