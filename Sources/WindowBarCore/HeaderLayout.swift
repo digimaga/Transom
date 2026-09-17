@@ -27,15 +27,17 @@ public struct HeaderLayout: Sendable {
                 count += 1
             }
         }
-        let used = menuWidths.prefix(count).reduce(0, +)
-        let titleW = max(0, remaining - used - overflowWidth)
-        let title = Rect(x: app.maxX + gap, y: 0, width: titleW, height: height)
-        var x = title.maxX + gap
+        // Left to right: app button, the menu headings (and the overflow button) directly after it, then
+        // the document title, which takes whatever width is left. Menus stay left-aligned like a menu bar.
+        var x = app.maxX + gap
         let menus = menuWidths.prefix(count).map { w -> Rect in
             defer { x += w }
             return Rect(x: x, y: 0, width: w, height: height)
         }
         let overflow = overflowWidth > 0 ? Rect(x: x, y: 0, width: overflowWidth, height: height) : nil
+        if let overflow { x = overflow.maxX }
+        let titleX = count > 0 || overflow != nil ? x + gap : x
+        let title = Rect(x: titleX, y: 0, width: max(0, width - inset - titleX), height: height)
         return HeaderLayout(app: app, title: title, menus: menus,
                             overflow: overflow, visibleMenuCount: count)
     }

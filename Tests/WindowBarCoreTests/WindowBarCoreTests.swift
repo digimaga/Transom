@@ -110,13 +110,24 @@ import Foundation
     @Test func testNoOverlappingOrOutOfBoundsControls() {
         for width in stride(from: 280.0, through: 1800.0, by: 13) {
             let layout = HeaderLayout.make(width: width, appWidth: 185, menuWidths: [55, 65, 75, 90, 58, 100])
-            let rects = [layout.app, layout.title] + layout.menus + (layout.overflow.map { [$0] } ?? [])
+            let rects = [layout.app] + layout.menus + (layout.overflow.map { [$0] } ?? []) + [layout.title]
             for rect in rects {
                 #expect(rect.width >= 0)
                 #expect(rect.maxX <= width + 0.01)
             }
             for pair in zip(rects, rects.dropFirst()) { #expect(pair.0.maxX <= pair.1.x + 0.01) }
         }
+    }
+    @Test func testMenusAreLeftAlignedAfterAppButton() throws {
+        let layout = HeaderLayout.make(width: 1200, appWidth: 130, menuWidths: [50, 50, 70, 80])
+        let first = try #require(layout.menus.first)
+        #expect(first.x == layout.app.maxX + 4)
+        for pair in zip(layout.menus, layout.menus.dropFirst()) { #expect(pair.1.x == pair.0.maxX) }
+        #expect(layout.title.x >= layout.menus.last!.maxX)
+        #expect(layout.title.maxX == 1200 - 5)
+        let narrow = HeaderLayout.make(width: 320, appWidth: 140, menuWidths: [50, 50, 70, 80])
+        let overflow = try #require(narrow.overflow)
+        #expect(narrow.title.x >= overflow.maxX)
     }
     @Test func testNoMenusStillShowsTitle() {
         let layout = HeaderLayout.make(width: 600, appWidth: 130, menuWidths: [])
