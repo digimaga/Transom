@@ -23,13 +23,13 @@ public enum Geometry {
     }
     /// Height of the external header strip above the target window.
     public static let headerHeight = 30.0
-    /// macOS 26 gives every standard window 16pt continuous-curve top corners (measured on 26.6 for AppKit and
-    /// Electron windows alike). A rectangular header above such a window leaves a notch at each corner.
-    public static let windowCornerRadius = 16.0
-    /// A continuous curve leaves the straight edge about 1.53 x radius away from the corner, so the notch
-    /// fill needs a band this tall below the header. Only the notch outside the curve is painted; the
-    /// rest of the band stays fully transparent and therefore click-through.
-    public static var cornerFillExtent: Double { (windowCornerRadius * 1.6).rounded(.up) }
+    /// The header panel runs on this far below the target's top edge, BEHIND the target (it is ordered
+    /// directly under it). The window hides all of that band except what shows through its own rounded
+    /// top corners, so the corners are filled whatever their radius (16pt on standard macOS 26 windows,
+    /// about 30pt on Safari) without the app knowing it. 48pt covers a continuous curve of radius ~31pt
+    /// (it leaves the edge about 1.53 x radius from the corner) and fits inside the smallest eligible
+    /// window height, so nothing of the band can show below a window either.
+    public static let cornerBackfill = 48.0
     /// Never covers native controls, clamps onto content, or mutates the target.
     /// The header needs its full height inside the usable screen area (never over the menu bar, never
     /// pushed onto the window). Sideways or downward overflow of the window past the screen edges is fine:
@@ -42,13 +42,12 @@ public enum Geometry {
         let fitsVertically = header.y >= visibleFrame.y - 0.5 && header.maxY <= visibleFrame.maxY + 0.5
         return fitsVertically && header.intersection(visibleFrame) != nil ? header : nil
     }
-    /// The panel that hosts a header: the header itself plus the corner-fill band that overlaps the
-    /// target's rounded top corners. Everything in the band except the two notches is transparent.
-    /// Callers keep using `externalHeader` for space checks; this larger frame is used for the panel
-    /// and for the (more conservative) ordering safety check.
-    public static func panelFrame(forHeader header: Rect, cornerExtent: Double = cornerFillExtent) -> Rect {
-        guard cornerExtent.isFinite, cornerExtent > 0 else { return header }
-        return Rect(x: header.x, y: header.y, width: header.width, height: header.height + cornerExtent)
+    /// The panel that hosts a header: the header itself plus the opaque backfill band below it. The band
+    /// keeps the header's x and width (the target's own), so it can only ever show through the target's
+    /// rounded corners, never beside the window. Callers keep using `externalHeader` for space checks.
+    public static func panelFrame(forHeader header: Rect, backfill: Double = cornerBackfill) -> Rect {
+        guard backfill.isFinite, backfill > 0 else { return header }
+        return Rect(x: header.x, y: header.y, width: header.width, height: header.height + backfill)
     }
     /// Windows-style "maximize": the usable screen area minus the header's own height at the top, so the
     /// header stays visible above the window. Applied ONLY when the user presses the header's maximize
@@ -80,13 +79,16 @@ public struct OrderedWindow: Sendable {
 }
 
 public enum OrderingPolicy {
-    /// Windows are front-to-back. A header may not float above an intervening
-    /// foreign window that ought to cover it. A missing ID is not assumed safe.
-    public static func isSafe(headerID: UInt32, targetID: UInt32, ownPID: Int32,
-                              headerFrame: Rect, frontToBack: [OrderedWindow]) -> Bool {
+    /// Windows are front-to-back. The header belongs directly BEHIND its target: the target hides the
+    /// backfill band and leaves the bar above it visible. A header in front of its target would paint
+    /// that band over the title bar, so it is rejected outright. A foreign window between the two that
+    /// overlaps the header would cut the bar although the target is in front of it, so that is rejected
+    /// too (and triggers a re-order). A missing ID is not assumed safe.
+    public static func isDirectlyBehind(headerID: UInt32, targetID: UInt32, ownPID: Int32,
+                                        headerFrame: Rect, frontToBack: [OrderedWindow]) -> Bool {
         guard let h = frontToBack.firstIndex(where: { $0.id == headerID }),
-              let t = frontToBack.firstIndex(where: { $0.id == targetID }), h < t else { return false }
-        return !frontToBack[(h + 1)..<t].contains {
+              let t = frontToBack.firstIndex(where: { $0.id == targetID }), t < h else { return false }
+        return !frontToBack[(t + 1)..<h].contains {
             $0.pid != ownPID && $0.frame.intersection(headerFrame) != nil
         }
     }

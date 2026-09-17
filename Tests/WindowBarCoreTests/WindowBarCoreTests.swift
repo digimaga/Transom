@@ -82,19 +82,18 @@ import Foundation
         #expect(Geometry.bestScreen(for: Rect(x: -100, y: 100, width: 700, height: 500),
                                     visibleFrames: [left, right]) == right)
     }
-    @Test func testPanelFrameOnlyExtendsDownwardOverCornerBand() throws {
-        let window = Rect(x: 100, y: 100, width: 700, height: 500)
+    @Test func testPanelBackfillStaysInsideTargetFrame() throws {
+        let window = Rect(x: 100, y: 100, width: 700, height: Geometry.minimumEligibleHeight)
         let header = try #require(Geometry.externalHeader(for: window, in: screen))
         let panel = Geometry.panelFrame(forHeader: header)
         #expect(panel.x == header.x && panel.y == header.y && panel.width == header.width)
-        #expect(panel.height == header.height + Geometry.cornerFillExtent)
-        // The band covers the corner curve's full run along the edge (about 1.53 x radius) and no more
-        // than the corner region itself; the header keeps clear of the native window entirely.
-        #expect(Geometry.cornerFillExtent >= Geometry.windowCornerRadius * 1.53)
-        #expect(Geometry.cornerFillExtent <= Geometry.windowCornerRadius * 2)
+        #expect(panel.height == header.height + Geometry.cornerBackfill)
+        // The band runs on behind the target: never wider than the window and, even for the smallest
+        // eligible window, never below its bottom edge, so it can only show through the rounded corners.
+        #expect(panel.maxX == window.maxX && panel.maxY <= window.maxY)
         #expect(header.intersection(window) == nil)
-        #expect(Geometry.panelFrame(forHeader: header, cornerExtent: 0) == header)
-        #expect(Geometry.panelFrame(forHeader: header, cornerExtent: .nan) == header)
+        #expect(Geometry.panelFrame(forHeader: header, backfill: 0) == header)
+        #expect(Geometry.panelFrame(forHeader: header, backfill: .nan) == header)
     }
     @Test func testInvalidRectRejected() {
         #expect(Geometry.externalHeader(for: Rect(x: .nan, y: 50, width: 200, height: 200), in: screen) == nil)
@@ -245,30 +244,37 @@ import Foundation
     func window(_ id: UInt32, _ pid: Int32, _ frame: Rect? = nil) -> OrderedWindow {
         OrderedWindow(id: id, pid: pid, frame: frame ?? header)
     }
-    @Test func testAdjacentHeaderAndTargetAllowed() {
-        #expect(OrderingPolicy.isSafe(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
-                                      frontToBack: [window(10, 99), window(1, 2)]))
+    // The header belongs directly behind its target (front-to-back: target, then header).
+    @Test func testHeaderDirectlyBehindTargetAllowed() {
+        #expect(OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+                                                frontToBack: [window(1, 2), window(10, 99)]))
     }
-    @Test func testIncorrectlyFloatingHeaderRejected() {
-        #expect(!OrderingPolicy.isSafe(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
-                                       frontToBack: [window(10, 99), window(2, 3), window(1, 2)]))
+    @Test func testHeaderInFrontOfTargetRejected() {
+        // Its backfill band would cover the target's title bar.
+        #expect(!OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+                                                 frontToBack: [window(10, 99), window(1, 2)]))
+    }
+    @Test func testInterveningForeignWindowRejected() {
+        #expect(!OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+                                                 frontToBack: [window(1, 2), window(2, 3), window(10, 99)]))
     }
     @Test func testForeignWindowInFrontOfBothIsCorrect() {
-        #expect(OrderingPolicy.isSafe(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
-                                      frontToBack: [window(2, 3), window(10, 99), window(1, 2)]))
+        #expect(OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+                                                frontToBack: [window(2, 3), window(1, 2), window(10, 99)]))
     }
     @Test func testNonIntersectingIntermediateWindowAllowed() {
-        #expect(OrderingPolicy.isSafe(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
-            frontToBack: [window(10, 99), window(2, 3, Rect(x: 1000, y: 0, width: 100, height: 100)), window(1, 2)]))
+        #expect(OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+            frontToBack: [window(1, 2), window(2, 3, Rect(x: 1000, y: 0, width: 100, height: 100)), window(10, 99)]))
     }
-    @Test func testHeaderBehindTargetRejected() {
-        #expect(!OrderingPolicy.isSafe(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
-                                       frontToBack: [window(1, 2), window(10, 99)]))
+    @Test func testOwnWindowBetweenAllowed() {
+        // Another header of ours between the two never covers this bar's target relationship.
+        #expect(OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+                                                frontToBack: [window(1, 2), window(11, 99), window(10, 99)]))
     }
     @Test func testMissingIDsRejected() {
-        #expect(!OrderingPolicy.isSafe(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
-                                       frontToBack: [window(1, 2)]))
-        #expect(!OrderingPolicy.isSafe(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
-                                       frontToBack: [window(10, 99)]))
+        #expect(!OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+                                                 frontToBack: [window(1, 2)]))
+        #expect(!OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
+                                                 frontToBack: [window(10, 99)]))
     }
 }

@@ -55,10 +55,8 @@ final class WindowServer {
     private(set) var lastPrivateOrderCode: Int32 = 0
     private(set) var lastPrivateCGError: Int32 = 0
     private(set) var privateOrderFailures = 0
-    /// After repeated private-path failures we stop calling it and rely on the public path only.
-    /// This avoids per-frame syscalls and log spam on OS versions where the SkyLight ABI differs.
+    /// Kept for the status report only: the private path is no longer called (see `order(_:behind:)`).
     private(set) var privateOrderingDisabled = false
-    private let privateFailureLimit = 3
     private static let logger = Logger(subsystem: "dev.local.WindowBar", category: "metadata")
 
     /// Front-to-back on-screen windows. `own`: this process's window numbers (the header panels) and pid.
@@ -102,28 +100,16 @@ final class WindowServer {
               let rows = CGWindowListCreateDescriptionFromArray(array) as? [[String: Any]] else { return [] }
         return rows.compactMap(ServerWindow.init(row:))
     }
-    /// Relative public ordering is tried first; the private transaction aligns sublevel when available.
-    /// Both paths remain subject to the independent metadata ordering check before opacity is restored.
-    /// Returns true if this call was the one that disabled the private path (for a single log line).
+    /// Puts the panel directly BEHIND its target with AppKit's public relative order. The target then hides
+    /// the panel's backfill band and leaves only the bar above the window visible. The private SkyLight
+    /// transaction (WBOrderAboveWindow) is not used: it orders above, and it failed on macOS 26 anyway.
+    /// The call is subject to the independent metadata check (`OrderingPolicy.isDirectlyBehind`) before
+    /// the panel is revealed. Returns false only when the panel has no window number yet.
     @discardableResult
-    func order(_ panel: NSPanel, above target: UInt32) -> Bool {
+    func order(_ panel: NSPanel, behind target: UInt32) -> Bool {
         precondition(Thread.isMainThread)
         panel.level = .normal
-        panel.order(.above, relativeTo: Int(target))
-        guard panel.windowNumber > 0, let number = UInt32(exactly: panel.windowNumber) else { return false }
-        if privateOrdering && !privateOrderingDisabled {
-            let code = WBOrderAboveWindow(number, target)
-            lastPrivateOrderCode = code
-            if code == 0 {
-                privateOrderFailures = 0
-            } else {
-                lastPrivateCGError = WBLastOrderCGError()
-                privateOrderFailures += 1
-                // Stop retrying (and stop spamming) once the ABI is shown to be unusable here.
-                // The public relative order stays in effect; OrderingPolicy.isSafe remains the gate.
-                if privateOrderFailures >= privateFailureLimit { privateOrderingDisabled = true }
-            }
-        }
-        return true
+        panel.order(.below, relativeTo: Int(target))
+        return panel.windowNumber > 0
     }
 }

@@ -24,7 +24,7 @@
 
 2026-09-16のMac実機引き継ぎで、テストはXCTestからSwift Testing(`import Testing`、`@Suite`/`@Test`/`#expect`)へ移行した。理由は、Xcode未インストールのCommand Line Tools環境にXCTestが含まれず `xcrun swift test` が失敗するため。テスト名・件数(34件)・検証内容は変えていない。Command Line Toolsのみの環境では既定ビルドシステムがTestingマクロのプラグインパスをフロントエンドへ渡さないため、`scripts/verify.sh` が `-Xswiftc -plugin-path` で明示指定する。
 
-## 34件の内訳（2026-09-17の角埋めで Geometry に1件追加し、現在は35件）
+## 34件の内訳（2026-09-17の追加・書き換えを経て、現在は40件）
 
 Geometry 10件（現在11件）、HeaderLayout 4件、Identity/Focus 7件、OperationPermit 4件、Presence 3件、Ordering 6件。
 
@@ -61,3 +61,5 @@ P1の実機結果（2026-09-17、`docs/ACCEPTANCE.md` に詳細）：合格 P1-0
 未確認：複数ディスプレイ境界をまたぐ窓のバー表示、120Hz表示での追従、Electron等の応答が遅いアプリでのバー側ドラッグの体感、100窓環境でのドラッグ中CPU。窓を前面化した直後にバーが約0.1秒消えて再表示される挙動（アプリのアクティブ化で全窓がバーより前に出て並べ直すため）は、以前の最大0.5秒から短縮したが残っている。
 
 追記（2026-09-17、Windows風ウィンドウボタン）：macOS 26.6／Apple Silicon／Xcodeツールチェーン Swift 6.4。`bash scripts/verify.sh` はビルドと39件のテスト（ウィンドウボタンの配置と最大化枠の2件を追加）が成功。実機では、バーのAX子要素からラベル「最小化」「最大化／元のサイズに戻す」「閉じる」のボタン座標を取り、CGEventの実クリックで操作した。結果は `docs/ACCEPTANCE.md` P1-16。文書名ラベルの削除後、バーの窓画像で最後のメニューより右に文字相当の画素が0件であることも確認済み。
+
+追記（2026-09-17、角の隙間埋めを背面方式へ変更）：半径16ptのマスクで塗る前回の方式では、角丸が大きいSafari（連続曲線で半径約30pt、上端行の不透明開始が63px＝31.5pt）に三日月状の隙間が残った（角領域1600画素中371画素が壁紙）。ユーザーの提案どおり角丸の形に合わせるのをやめ、バーのパネルを対象窓の直後（背面）に `order(.below, relativeTo:)` で並べて、窓の上端より48pt下まで不透明に描く方式へ変更した。窓に隠れて角丸から透ける部分だけが埋まるため半径に依存しない。実機（macOS 26.6）でSafari・Claude・テキストエディットの角領域の壁紙画素が0件、CGWindowListの前後順は対象→バーの順、AXの位置問い合わせでバー本体はWindowBarのボタン、帯の上のSafariツールバーはSafari、角の塗り部分はSafariの窓（窓の透明画素越しに前面の窓が返る）と返った。SafariとClaudeのアクティブ化で前後順を入れ替えた後もバーが対象の直後に戻ることを確認した。Safariのツールバー（ガラス表現）に帯の色が透ける等の見た目の変化は目視で認められなかった。`bash scripts/verify.sh` はビルドと40件のテストが成功（Ordering 6件を背面前提へ書き換え、自窓が間に挟まる場合の1件を追加）。非公開のSkyLight経路（WBOrderAboveWindow）は前面へ並べるものなので `WindowServer.order` から外した（`--capabilities` の表示は残る）。未確認：Mission Control・Stage Manager・複数ディスプレイでの背面配置の見え方、対象窓の影が帯に落ちる量の詳細。

@@ -66,11 +66,12 @@ final class AppController: NSObject {
         menus.isTargetValid = { [weak self] token in self?.valid(token) ?? false }
         menus.onStatus = { [weak self] message in self?.status(message) }
         drag.onStatus = { [weak self] message in self?.status(message) }
-        // The drag target was just raised above its header by the AX raise: put the header back above it
-        // now instead of waiting for the metadata pass to notice, and confirm the order at the fast cadence.
+        // The AX raise just brought the drag target to the front, possibly past other windows of its app
+        // that now sit between it and the header: put the header directly behind it again now instead of
+        // waiting for the metadata pass to notice, and confirm the order at the fast cadence.
         drag.onReady = { [weak self] token in
             guard let self, let panel = self.panels[token], panel.isVisible else { return }
-            self.server.order(panel, above: token.windowID)
+            self.server.order(panel, behind: token.windowID)
             self.fastPollUntil = max(self.fastPollUntil, ProcessInfo.processInfo.systemUptime + 0.15)
         }
         // Place the header on the frame the window just took, in the same frame when possible. The regular
@@ -338,8 +339,8 @@ final class AppController: NSObject {
                !previous.approximatelyEquals(frame, tolerance: 1) { menus.cancel() }
             panel.targetFrame = frame
             panel.globalHeaderFrame = external
-            // The panel is taller than the header: a transparent band over the target's rounded top corners,
-            // painted only in the two notches. The ordering check uses this larger frame on purpose.
+            // The panel is taller than the header: an opaque backfill band that runs on behind the target and
+            // shows only through its rounded corners. It is safe only while the target is in front of it.
             let panelFrame = Geometry.panelFrame(forHeader: external)
             let desired = geometry.appKit(panelFrame)
             if !Rect(panel.frame).approximatelyEquals(Rect(desired), tolerance: 0.25) { panel.setFrame(desired, display: true) }
@@ -350,7 +351,7 @@ final class AppController: NSObject {
                 panel.renderedFocused = focused
             }
             let panelID = UInt32(exactly: panel.windowNumber) ?? 0
-            let safe = OrderingPolicy.isSafe(headerID: panelID, targetID: token.windowID,
+            let safe = OrderingPolicy.isDirectlyBehind(headerID: panelID, targetID: token.windowID,
                 ownPID: ownPID, headerFrame: panelFrame, frontToBack: ordering)
             if safe, panel.isVisible {
                 if panel.alphaValue < 1 { logger.debug("reveal panel=\(panelID, privacy: .public) target=\(token.windowID, privacy: .public) unsafeCount=\(panel.unsafeCount, privacy: .public)") }
@@ -362,18 +363,12 @@ final class AppController: NSObject {
                 if now - panel.orderRequestedAt > 0.12 {
                     panel.orderRequestedAt = now
                     panel.unsafeCount += 1
-                    let wasDisabled = server.privateOrderingDisabled
                     // Confirm the new order at the fast cadence so the header is back within about a frame
                     // or two instead of waiting for the idle poll. Bounded: a header that keeps failing
                     // the check (covered by a foreign window) drops back to the idle cadence.
                     if panel.unsafeCount <= 2 { fastPollUntil = max(fastPollUntil, now + 0.15) }
-                    logger.debug("order panel=\(panelID, privacy: .public) above=\(token.windowID, privacy: .public) unsafeCount=\(panel.unsafeCount, privacy: .public)")
-                    if !server.order(panel, above: token.windowID) { panel.hide() }
-                    else if server.privateOrderingDisabled && !wasDisabled {
-                        // Logged once, when the private path is first given up on. No per-frame spam.
-                        let code = server.lastPrivateOrderCode, cgError = server.lastPrivateCGError
-                        logger.info("非公開order経路がコード \(code, privacy: .public)（CGError \(cgError, privacy: .public)）で繰り返し失敗したため、以後は公開経路とメタデータ照合のみで並び順を確認します。")
-                    }
+                    logger.debug("order panel=\(panelID, privacy: .public) behind=\(token.windowID, privacy: .public) unsafeCount=\(panel.unsafeCount, privacy: .public)")
+                    if !server.order(panel, behind: token.windowID) { panel.hide() }
                 }
             }
         }

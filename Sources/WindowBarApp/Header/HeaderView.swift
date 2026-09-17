@@ -45,9 +45,9 @@ final class HeaderView: NSView {
     private var headings: [MenuHeading] = []
     private var currentLayout: HeaderLayout?
     private var focused = false
-    /// The header strip occupies the top of the view; below it lies the transparent corner-fill band.
+    /// The header strip occupies the top of the view; the rest is the backfill band that runs on behind
+    /// the target window and shows only through its rounded corners.
     private let stripHeight = CGFloat(Geometry.headerHeight)
-    private let cornerExtent = CGFloat(Geometry.cornerFillExtent)
     var onMenu: (([MenuHeading], NSPoint) -> Void)?
     var onActivate: (() -> Void)?
     var onDragBegan: (() -> Void)?
@@ -146,40 +146,17 @@ final class HeaderView: NSView {
         if let rect = layout.overflow { overflowButton.frame = rect.cgRect }
         for (button, rect) in zip([minimizeButton, maximizeButton, closeButton], layout.controls) { button.frame = rect.cgRect }
     }
-    override func viewDidChangeBackingProperties() {
-        super.viewDidChangeBackingProperties()
-        needsDisplay = true
-    }
     override func draw(_ dirtyRect: NSRect) {
-        let strip = NSRect(x: 0, y: 0, width: bounds.width, height: min(bounds.height, stripHeight))
+        // The whole panel is bar colour: the strip above the window and, below it, the backfill band that
+        // the window in front hides everywhere except through its rounded corners. No shape is assumed.
         NSColor.windowBackgroundColor.setFill()
-        strip.fill()
+        bounds.fill()
+        let strip = min(bounds.height, stripHeight)
         NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: strip.height - 1, width: bounds.width, height: 1).fill()
+        NSRect(x: 0, y: strip - 1, width: bounds.width, height: 1).fill()
         if focused {
             NSColor.controlAccentColor.setFill()
             NSRect(x: 0, y: 0, width: bounds.width, height: 2).fill()
         }
-        drawCornerNotches(below: strip)
-    }
-    /// Fills only the two notches between the header's square bottom corners and the target window's
-    /// rounded top corners. The rest of the band below the strip stays transparent (and click-through).
-    private func drawCornerNotches(below strip: NSRect) {
-        let extent = min(cornerExtent, bounds.height - strip.height, bounds.width / 2)
-        guard extent > 0, let context = NSGraphicsContext.current?.cgContext,
-              let mask = CornerNotch.mask(radius: Geometry.windowCornerRadius, extent: Double(extent),
-                                          scale: Double(window?.backingScaleFactor ?? 2)) else { return }
-        let notch = NSRect(x: 0, y: strip.maxY, width: extent, height: extent)
-        NSColor.windowBackgroundColor.setFill()
-        context.saveGState()
-        context.clip(to: notch, mask: mask)
-        context.fill(notch)
-        context.restoreGState()
-        context.saveGState()
-        context.translateBy(x: bounds.width, y: 0)
-        context.scaleBy(x: -1, y: 1)
-        context.clip(to: notch, mask: mask)
-        context.fill(notch)
-        context.restoreGState()
     }
 }
