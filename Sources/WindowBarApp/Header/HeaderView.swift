@@ -17,23 +17,15 @@ private final class ActionButton: NSButton {
     override var acceptsFirstResponder: Bool { false }
 }
 
+/// The empty stretch after the menus: the handle for dragging the window. It shows no text on purpose;
+/// the window's own title bar and the app's tabs already name the document, and the app name sits at the
+/// left of the bar. The tool tip still carries "app — title" for anyone who hovers.
 private final class DragSurface: NSView {
-    let label = NSTextField(labelWithString: "")
     var began: (() -> Void)?
     var moved: (() -> Void)?
     var ended: (() -> Void)?
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        label.font = .systemFont(ofSize: 12)
-        label.lineBreakMode = .byTruncatingMiddle
-        label.isSelectable = false
-        addSubview(label)
-    }
+    override init(frame frameRect: NSRect) { super.init(frame: frameRect) }
     required init?(coder: NSCoder) { fatalError("Programmatic UI only") }
-    override func layout() {
-        super.layout()
-        label.frame = NSRect(x: 0, y: max(0, (bounds.height - 18) / 2), width: bounds.width, height: 18)
-    }
     override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { began?() }
@@ -95,7 +87,6 @@ final class HeaderView: NSView {
         appButton.title = snapshot.appName
         if let icon { let copy = icon.copy() as? NSImage; copy?.size = NSSize(width: 16, height: 16); appButton.image = copy }
         appButton.toolTip = "\(snapshot.appName) のアプリメニュー"
-        titleSurface.label.stringValue = snapshot.title.isEmpty ? "" : "— \(snapshot.title)"
         titleSurface.toolTip = snapshot.title.isEmpty ? snapshot.appName : "\(snapshot.appName) — \(snapshot.title)"
         if headings != snapshot.headings {
             headings = snapshot.headings
