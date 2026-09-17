@@ -75,7 +75,7 @@ final class AXAppWorker {
         // A successful list read is distinguished from unavailable/timeout, including an empty list.
         guard let raw = try AX.value(application, kAXWindowsAttribute, budget: budget),
               CFGetTypeID(raw) == CFArrayGetTypeID() else {
-            throw TransomError.unavailable("ウィンドウ一覧を読み取れません。")
+            throw TransomError.unavailable(NSLocalizedString("ウィンドウ一覧を読み取れません。", comment: "Error: failed to read the window list"))
         }
         let elements = AX.elements(raw)
         let focused = try? AX.element(AX.value(application, kAXFocusedWindowAttribute, budget: budget))
@@ -274,10 +274,10 @@ final class AXAppWorker {
                   try !AX.hasSheet(record.element, budget: budget) else { throw TransomError.focusMismatch }
             guard let button = AX.element(try AX.value(record.element, attribute, budget: budget)),
                   try AX.actions(button, budget: budget).contains(kAXPressAction) else {
-                throw TransomError.unavailable("このウィンドウにはそのボタンがありません。")
+                throw TransomError.unavailable(NSLocalizedString("このウィンドウにはそのボタンがありません。", comment: "Error: window doesn't have the requested button"))
             }
             guard try AX.bool(button, kAXEnabledAttribute, budget: budget) != false else {
-                throw TransomError.unavailable("このウィンドウではそのボタンが無効です。")
+                throw TransomError.unavailable(NSLocalizedString("このウィンドウではそのボタンが無効です。", comment: "Error: button is disabled on this window"))
             }
             guard permit.isValid(), worker.lifetime.isValid(), permit.commitOnce() else { throw TransomError.cancelled }
             AX.configure(button)
@@ -295,7 +295,7 @@ final class AXAppWorker {
                   AX.settable(record.element, kAXPositionAttribute) else { throw TransomError.stale }
             let sizeChanges = abs(expected.height - desired.height) > 0.5 || abs(expected.width - desired.width) > 0.5
             if sizeChanges, !AX.settable(record.element, kAXSizeAttribute) {
-                throw TransomError.unavailable("このウィンドウはサイズを変更できません。")
+                throw TransomError.unavailable(NSLocalizedString("このウィンドウはサイズを変更できません。", comment: "Error: window's size can't be changed"))
             }
             // Position + size is not atomic. Do not silently rollback over later user changes.
             // AppKit keeps a window inside its screen at each step, so the order matters: when growing
@@ -311,7 +311,7 @@ final class AXAppWorker {
             if !grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
             let actual = try AX.frame(record.element)
             guard actual.approximatelyEquals(desired, tolerance: 2) else {
-                throw TransomError.unavailable("アプリが配置を補正しました。実際の配置を確認してください。")
+                throw TransomError.unavailable(NSLocalizedString("アプリが配置を補正しました。実際の配置を確認してください。", comment: "Error: app adjusted the placement, check the actual position"))
             }
             return actual
         }, completion: completion)

@@ -32,6 +32,10 @@ rm -rf "$STAGING"
 mkdir -p "$STAGING/Contents/MacOS"
 cp "$BIN_PATH/$PRODUCT" "$STAGING/Contents/MacOS/$PRODUCT"
 cp "$PLIST" "$STAGING/Contents/Info.plist"
+if [[ "$PRODUCT" == "Transom" ]] && compgen -G "Resources/*.lproj" > /dev/null; then
+  mkdir -p "$STAGING/Contents/Resources"
+  cp -R Resources/*.lproj "$STAGING/Contents/Resources/"
+fi
 printf 'APPL????' > "$STAGING/Contents/PkgInfo"
 /usr/bin/plutil -lint "$STAGING/Contents/Info.plist"
 SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"

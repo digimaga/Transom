@@ -42,13 +42,23 @@ enum TransomError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .ax(let code): return "アクセシビリティ応答エラー (\(code))"
+        case .ax(let code):
+            return String(format: NSLocalizedString("アクセシビリティ応答エラー (%d)", comment: "Error: AX API returned an error code"), code)
         case .unavailable(let reason): return reason
-        case .stale: return "対象またはメニューの状態が変わったため、操作を中止しました。"
-        case .cancelled: return "操作を中止しました。"
-        case .deadline: return "応答が遅いため、処理を中止しました。元のMacメニューをご利用ください。"
-        case .focusMismatch: return "対象ウィンドウのフォーカスを確認できないため、操作しませんでした。"
-        case .actionUncertain: return "実行要求への応答がありません。実行済みの可能性があるため自動再試行しません。元アプリを確認してください。"
+        case .stale:
+            return NSLocalizedString("対象またはメニューの状態が変わったため、操作を中止しました。",
+                                      comment: "Error: target or menu state changed, action cancelled")
+        case .cancelled:
+            return NSLocalizedString("操作を中止しました。", comment: "Error: action cancelled")
+        case .deadline:
+            return NSLocalizedString("応答が遅いため、処理を中止しました。元のMacメニューをご利用ください。",
+                                      comment: "Error: timed out, suggests using the original Mac menu")
+        case .focusMismatch:
+            return NSLocalizedString("対象ウィンドウのフォーカスを確認できないため、操作しませんでした。",
+                                      comment: "Error: couldn't confirm the target window's focus")
+        case .actionUncertain:
+            return NSLocalizedString("実行要求への応答がありません。実行済みの可能性があるため自動再試行しません。元アプリを確認してください。",
+                                      comment: "Error: no response to the action request, won't auto-retry")
         }
     }
 }

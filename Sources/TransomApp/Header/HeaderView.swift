@@ -64,9 +64,9 @@ final class HeaderView: NSView {
         addSubview(titleSurface)
         addSubview(overflowButton)
         for (button, symbol, label, action) in [
-            (minimizeButton, "minus", "最小化", { [weak self] in self?.onMinimize?() }),
-            (maximizeButton, "square", "最大化／元のサイズに戻す", { [weak self] in self?.onMaximize?() }),
-            (closeButton, "xmark", "閉じる", { [weak self] in self?.onClose?() })
+            (minimizeButton, "minus", NSLocalizedString("最小化", comment: "Header button: minimize"), { [weak self] in self?.onMinimize?() }),
+            (maximizeButton, "square", NSLocalizedString("最大化／元のサイズに戻す", comment: "Header button: maximize or restore"), { [weak self] in self?.onMaximize?() }),
+            (closeButton, "xmark", NSLocalizedString("閉じる", comment: "Header button: close"), { [weak self] in self?.onClose?() })
         ] as [(ActionButton, String, String, () -> Void)] {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
                 .withSymbolConfiguration(.init(pointSize: 11, weight: .regular))
@@ -84,8 +84,8 @@ final class HeaderView: NSView {
             if let first = self.headings.first { self.onMenu?([first], self.anchor(self.appButton.frame)) }
             else { self.onActivate?() }
         }
-        overflowButton.toolTip = "残りのメニュー"
-        overflowButton.setAccessibilityLabel("残りのアプリメニュー")
+        overflowButton.toolTip = NSLocalizedString("残りのメニュー", comment: "Overflow button tooltip")
+        overflowButton.setAccessibilityLabel(NSLocalizedString("残りのアプリメニュー", comment: "Overflow button accessibility label"))
         overflowButton.invoke = { [weak self] in
             guard let self, let layout = self.currentLayout else { return }
             let rest = Array(self.headings.dropFirst().dropFirst(layout.visibleMenuCount))
@@ -106,7 +106,7 @@ final class HeaderView: NSView {
         self.focused = focused
         appButton.title = snapshot.appName
         if let icon { let copy = icon.copy() as? NSImage; copy?.size = NSSize(width: 16, height: 16); appButton.image = copy }
-        appButton.toolTip = "\(snapshot.appName) のアプリメニュー"
+        appButton.toolTip = String(format: NSLocalizedString("%@ のアプリメニュー", comment: "App button tooltip, e.g. 'Safari App Menu'"), snapshot.appName)
         titleSurface.toolTip = snapshot.title.isEmpty ? snapshot.appName : "\(snapshot.appName) — \(snapshot.title)"
         if headings != snapshot.headings {
             headings = snapshot.headings

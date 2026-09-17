@@ -1,0 +1,67 @@
+/* AppController.swift */
+"準備中" = "Preparing";
+"正確なウィンドウID APIが使えないため、表示を停止しています。" = "Display is paused because the exact window ID API isn't available.";
+"このウィンドウは最大化できません。" = "This window can't be maximized.";
+"元のサイズが記録されていないため戻せません。ドラッグで調整してください。" = "Can't restore because the original size wasn't recorded. Adjust it by dragging instead.";
+"元のサイズに戻しました。" = "Restored to the original size.";
+"最大化しました。" = "Maximized.";
+"外付けバーを有効にする" = "Enable External Bar";
+"最前面の1枚にバー用の空間を確保" = "Reserve Bar Space on Frontmost Window";
+"最前面のアプリを除外" = "Exclude Frontmost App";
+"除外設定をすべて解除" = "Clear All Exclusions";
+"アクセシビリティの許可を確認" = "Check Accessibility Permission";
+"アクセシビリティ設定を開く" = "Open Accessibility Settings";
+"診断情報をコピー（文書名を含まない）" = "Copy Diagnostics (No Document Names)";
+"Transomを終了" = "Quit Transom";
+"停止中" = "Stopped";
+"権限待ち" = "Awaiting Permission";
+"ID取得非対応" = "ID Unsupported";
+"%d/%d 枚表示" = "%d/%d shown";
+"アクセシビリティは許可されています。" = "Accessibility access is granted.";
+"システム設定でTransomのアクセシビリティを許可してください。" = "Grant Transom accessibility access in System Settings.";
+"空間を確保できる通常ウィンドウを選択してください。" = "Select a normal window that can reserve space.";
+"このウィンドウには既に空間があります。位置は変更しませんでした。" = "This window already has space reserved. Its position wasn't changed.";
+"最前面の1枚にバー用の空間を確保しました。" = "Reserved bar space on the frontmost window.";
+"最前面のアプリを除外しました。" = "Excluded the frontmost app.";
+"除外設定を解除しました。" = "Cleared the exclusions.";
+"文書名を含まない診断情報をコピーしました。" = "Copied diagnostics without document names.";
+
+/* HeaderView.swift */
+"最小化" = "Minimize";
+"最大化／元のサイズに戻す" = "Maximize / Restore";
+"閉じる" = "Close";
+"残りのメニュー" = "More Menus";
+"残りのアプリメニュー" = "More App Menus";
+"%@ のアプリメニュー" = "%@ App Menu";
+
+/* HeaderPanel.swift */
+"Transom 外付けタイトルバー" = "Transom External Title Bar";
+
+/* MenuCoordinator.swift */
+"対象アプリをアクティブにできませんでした。" = "Couldn't activate the target app.";
+"元アプリへ実行要求を送りました。" = "Sent the action to the original app.";
+
+/* RuntimeModels.swift */
+"アクセシビリティ応答エラー (%d)" = "Accessibility response error (%d)";
+"対象またはメニューの状態が変わったため、操作を中止しました。" = "Cancelled because the target or menu state changed.";
+"操作を中止しました。" = "Cancelled.";
+"応答が遅いため、処理を中止しました。元のMacメニューをご利用ください。" = "Cancelled because the response was too slow. Use the original Mac menu instead.";
+"対象ウィンドウのフォーカスを確認できないため、操作しませんでした。" = "No action was taken because the target window's focus couldn't be confirmed.";
+"実行要求への応答がありません。実行済みの可能性があるため自動再試行しません。元アプリを確認してください。" = "No response to the action. It won't be retried automatically since it may have already run — check the original app.";
+
+/* AXAppWorker.swift */
+"ウィンドウ一覧を読み取れません。" = "Can't read the window list.";
+"このウィンドウにはそのボタンがありません。" = "This window doesn't have that button.";
+"このウィンドウではそのボタンが無効です。" = "That button is disabled on this window.";
+"このウィンドウはサイズを変更できません。" = "This window's size can't be changed.";
+"アプリが配置を補正しました。実際の配置を確認してください。" = "The app adjusted the placement. Check its actual position.";
+
+/* AXMenuStore.swift */
+"このアプリはメニュー情報を公開していません。" = "This app doesn't expose menu information.";
+"未展開または非対応のメニューです。元のMacメニューを使用してください。" = "This menu is unexpanded or unsupported. Use the original Mac menu instead.";
+"取得上限に達しました。残りは元のMacメニューを使用してください。" = "Reached the retrieval limit. Use the original Mac menu for the rest.";
+"非対応のメニュー部品" = "Unsupported Menu Item";
+"メニュー" = "Menu";
+"未展開のメニュー" = "Unexpanded Menu";
+"名称なし（非対応）" = "Unnamed (Unsupported)";
+"メニューの取得に失敗しました。元のMacメニューを使用してください。" = "Failed to retrieve the menu. Use the original Mac menu instead.";

@@ -44,7 +44,7 @@ final class AppController: NSObject {
     /// Until when metadata is re-read at the fast cadence because an ordering change is being confirmed
     /// (a header was just re-ordered above its target, or the frontmost application changed).
     private var fastPollUntil: TimeInterval = 0
-    private var lastMessage = "準備中"
+    private var lastMessage = NSLocalizedString("準備中", comment: "Status message shown while the app is starting up")
     private var dirtyApplications = Set<Int32>()
     private var reservePermit: OperationPermit?
     private var reserveTarget: WindowToken?
@@ -89,7 +89,10 @@ final class AppController: NSObject {
         RunLoop.main.add(timer, forMode: .common)
         trusted = AXIsProcessTrusted()
         if !trusted && enabled { requestPermission() }
-        if !server.exactIdentity { status("正確なウィンドウID APIが使えないため、表示を停止しています。") }
+        if !server.exactIdentity {
+            status(NSLocalizedString("正確なウィンドウID APIが使えないため、表示を停止しています。",
+                                      comment: "Status: shown when the exact window ID API is unavailable"))
+        }
         tick()
     }
     func stop() {
@@ -419,13 +422,15 @@ final class AppController: NSObject {
               let geometry = ScreenGeometry.current(),
               let screen = Geometry.bestScreen(for: actual, visibleFrames: geometry.visibleFrames),
               let maximized = Geometry.maximizedFrame(in: screen) else {
-            status("このウィンドウは最大化できません。")
+            status(NSLocalizedString("このウィンドウは最大化できません。",
+                                      comment: "Status: the target window can't be maximized"))
             return
         }
         menus.cancel(); drag.cancel(); reservePermit?.cancel()
         let restoring = actual.approximatelyEquals(maximized, tolerance: 2)
         guard let desired = restoring ? restoreFrames[token] : maximized else {
-            status("元のサイズが記録されていないため戻せません。ドラッグで調整してください。")
+            status(NSLocalizedString("元のサイズが記録されていないため戻せません。ドラッグで調整してください。",
+                                      comment: "Status: no recorded size to restore to"))
             return
         }
         let permit = OperationPermit(lifetime: 5)
@@ -441,7 +446,9 @@ final class AppController: NSObject {
                 switch result {
                 case .success:
                     if restoring { self.restoreFrames[token] = nil } else { self.restoreFrames[token] = actual }
-                    self.status(restoring ? "元のサイズに戻しました。" : "最大化しました。")
+                    self.status(restoring
+                        ? NSLocalizedString("元のサイズに戻しました。", comment: "Status: window restored to its original size")
+                        : NSLocalizedString("最大化しました。", comment: "Status: window maximized"))
                 case .failure(let error): self.status(error.localizedDescription)
                 }
                 self.dirtyApplications.insert(token.pid)
@@ -479,16 +486,16 @@ final class AppController: NSObject {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
             item.target = self; menu.addItem(item); return item
         }
-        toggleItem = item("外付けバーを有効にする", #selector(toggle))
-        _ = item("最前面の1枚にバー用の空間を確保", #selector(reserveFocused))
-        _ = item("最前面のアプリを除外", #selector(excludeFocusedApplication))
-        _ = item("除外設定をすべて解除", #selector(clearExclusions))
+        toggleItem = item(NSLocalizedString("外付けバーを有効にする", comment: "Menu item: toggles the external bar on/off"), #selector(toggle))
+        _ = item(NSLocalizedString("最前面の1枚にバー用の空間を確保", comment: "Menu item: reserve bar space on the frontmost window"), #selector(reserveFocused))
+        _ = item(NSLocalizedString("最前面のアプリを除外", comment: "Menu item: exclude the frontmost app"), #selector(excludeFocusedApplication))
+        _ = item(NSLocalizedString("除外設定をすべて解除", comment: "Menu item: clear all app exclusions"), #selector(clearExclusions))
         menu.addItem(.separator())
-        _ = item("アクセシビリティの許可を確認", #selector(requestPermission))
-        _ = item("アクセシビリティ設定を開く", #selector(openAccessibilitySettings))
-        _ = item("診断情報をコピー（文書名を含まない）", #selector(copyDiagnostics))
+        _ = item(NSLocalizedString("アクセシビリティの許可を確認", comment: "Menu item: check accessibility permission"), #selector(requestPermission))
+        _ = item(NSLocalizedString("アクセシビリティ設定を開く", comment: "Menu item: open Accessibility settings"), #selector(openAccessibilitySettings))
+        _ = item(NSLocalizedString("診断情報をコピー（文書名を含まない）", comment: "Menu item: copy diagnostics without document names"), #selector(copyDiagnostics))
         menu.addItem(.separator())
-        _ = item("Transomを終了", #selector(quit))
+        _ = item(NSLocalizedString("Transomを終了", comment: "Menu item: quit the app"), #selector(quit))
         statusItem.menu = menu
     }
     private func status(_ message: String) {
@@ -501,7 +508,10 @@ final class AppController: NSObject {
         toggleItem.state = enabled ? .on : .off
         let visible = panels.values.filter { $0.isVisible && $0.alphaValue > 0.9 }.count
         let tracked = workers.values.reduce(0) { $0 + $1.snapshots.filter(\.eligible).count }
-        let state = !enabled ? "停止中" : !trusted ? "権限待ち" : !server.exactIdentity ? "ID取得非対応" : "\(visible)/\(tracked) 枚表示"
+        let state = !enabled ? NSLocalizedString("停止中", comment: "State: disabled")
+            : !trusted ? NSLocalizedString("権限待ち", comment: "State: awaiting accessibility permission")
+            : !server.exactIdentity ? NSLocalizedString("ID取得非対応", comment: "State: exact window ID unsupported")
+            : String(format: NSLocalizedString("%d/%d 枚表示", comment: "State: visible/tracked window count, e.g. 2/3 shown"), visible, tracked)
         statusLine.title = "Transom 0.1 — \(state)"
         statusItem.button?.toolTip = "\(state)\n\(lastMessage)"
     }
@@ -515,7 +525,9 @@ final class AppController: NSObject {
     @objc private func requestPermission() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         trusted = AXIsProcessTrustedWithOptions(options)
-        status(trusted ? "アクセシビリティは許可されています。" : "システム設定でTransomのアクセシビリティを許可してください。")
+        status(trusted
+            ? NSLocalizedString("アクセシビリティは許可されています。", comment: "Status: accessibility permission granted")
+            : NSLocalizedString("システム設定でTransomのアクセシビリティを許可してください。", comment: "Status: prompts the user to grant accessibility permission"))
     }
     @objc private func openAccessibilitySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
@@ -532,10 +544,15 @@ final class AppController: NSObject {
               let geometry = ScreenGeometry.current(),
               let screen = Geometry.bestScreen(for: actual, visibleFrames: geometry.visibleFrames),
               let desired = Geometry.reserveSpace(for: actual, in: screen) else {
-            status("空間を確保できる通常ウィンドウを選択してください。")
+            status(NSLocalizedString("空間を確保できる通常ウィンドウを選択してください。",
+                                      comment: "Status: no eligible window to reserve space on"))
             return
         }
-        if actual.approximatelyEquals(desired) { status("このウィンドウには既に空間があります。位置は変更しませんでした。"); return }
+        if actual.approximatelyEquals(desired) {
+            status(NSLocalizedString("このウィンドウには既に空間があります。位置は変更しませんでした。",
+                                      comment: "Status: window already has reserved space"))
+            return
+        }
         let permit = OperationPermit(lifetime: 5)
         reservePermit = permit; reserveTarget = snapshot.token
         // This menu item is the explicit authorization to move/resize this one window.
@@ -544,7 +561,9 @@ final class AppController: NSObject {
             permit.cancel()
             self.reserveTarget = nil
             switch result {
-            case .success: self.status("最前面の1枚にバー用の空間を確保しました。")
+            case .success:
+                self.status(NSLocalizedString("最前面の1枚にバー用の空間を確保しました。",
+                                               comment: "Status: reserved bar space on the frontmost window"))
             case .failure(let error): self.status(error.localizedDescription)
             }
             self.dirtyApplications.insert(snapshot.token.pid)
@@ -558,12 +577,12 @@ final class AppController: NSObject {
         values.insert(bundle)
         UserDefaults.standard.set(Array(values).sorted(), forKey: "excludedBundleIDs")
         retire(app.processIdentifier)
-        status("最前面のアプリを除外しました。")
+        status(NSLocalizedString("最前面のアプリを除外しました。", comment: "Status: excluded the frontmost app"))
     }
     @objc private func clearExclusions() {
         UserDefaults.standard.removeObject(forKey: "excludedBundleIDs")
         lastApplicationsRefresh = 0
-        status("除外設定を解除しました。")
+        status(NSLocalizedString("除外設定を解除しました。", comment: "Status: cleared the app exclusions"))
     }
     @objc private func copyDiagnostics() {
         let info: [String: Any] = [
@@ -582,7 +601,7 @@ final class AppController: NSObject {
               let text = String(data: data, encoding: .utf8) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        status("文書名を含まない診断情報をコピーしました。")
+        status(NSLocalizedString("文書名を含まない診断情報をコピーしました。", comment: "Status: copied diagnostics without document names"))
     }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 }

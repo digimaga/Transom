@@ -133,7 +133,7 @@ private final class AXMenuReader {
 
     func read(headings: [MenuHeading]) throws -> [MenuEntry] {
         guard let root = AX.element(try AX.value(application, kAXMenuBarAttribute, budget: budget)) else {
-            throw TransomError.unavailable("このアプリはメニュー情報を公開していません。")
+            throw TransomError.unavailable(NSLocalizedString("このアプリはメニュー情報を公開していません。", comment: "Error: app doesn't expose menu information"))
         }
         self.root = root
         let tops = try AX.children(root, budget: budget)
@@ -151,12 +151,18 @@ private final class AXMenuReader {
             let role = try AX.string(top, kAXRoleAttribute, budget: budget) ?? ""
             let step = AXPathStep(index: heading.index, element: top, role: role, title: heading.title)
             var children = readChildren(of: top, path: [step], depth: 0)
-            if children.isEmpty { children = [.notice("未展開または非対応のメニューです。元のMacメニューを使用してください。") ] }
+            if children.isEmpty {
+                children = [.notice(NSLocalizedString("未展開または非対応のメニューです。元のMacメニューを使用してください。",
+                                                        comment: "Menu notice: unexpanded or unsupported menu"))]
+            }
             if headings.count == 1 { entries = children }
             else { entries.append(MenuEntry(title: heading.title, enabled: true, children: children)) }
             if truncated { break }
         }
-        if truncated { entries.append(.notice("取得上限に達しました。残りは元のMacメニューを使用してください。")) }
+        if truncated {
+            entries.append(.notice(NSLocalizedString("取得上限に達しました。残りは元のMacメニューを使用してください。",
+                                                       comment: "Menu notice: reached the retrieval limit")))
+        }
         return entries
     }
     private func readChildren(of parent: AXUIElement, path: [AXPathStep], depth: Int) -> [MenuEntry] {
@@ -183,7 +189,8 @@ private final class AXMenuReader {
                     continue
                 }
                 guard role == kAXMenuItemRole else {
-                    entries.append(.notice(title.isEmpty ? "非対応のメニュー部品" : title))
+                    entries.append(.notice(title.isEmpty
+                        ? NSLocalizedString("非対応のメニュー部品", comment: "Menu notice: unsupported menu part") : title))
                     continue
                 }
                 let hasContainer = !AX.elements(fields[kAXChildrenAttribute]).isEmpty ||
@@ -199,11 +206,12 @@ private final class AXMenuReader {
                 let modifiers = (fields[kAXMenuItemCmdModifiersAttribute] as? NSNumber)?.intValue ?? 0
                 let shortcut = shortcutString(char: char, modifiers: modifiers)
                 if !nested.isEmpty {
-                    entries.append(MenuEntry(title: title.isEmpty ? "メニュー" : title, enabled: enabled,
-                                             mark: mark, shortcut: shortcut, children: nested))
+                    entries.append(MenuEntry(title: title.isEmpty ? NSLocalizedString("メニュー", comment: "Fallback menu title") : title,
+                                             enabled: enabled, mark: mark, shortcut: shortcut, children: nested))
                 } else if hasContainer {
                     // Do not accidentally AXPress an unmaterialized submenu as though it were a command.
-                    entries.append(MenuEntry(title: title.isEmpty ? "未展開のメニュー" : title, enabled: false))
+                    entries.append(MenuEntry(title: title.isEmpty
+                        ? NSLocalizedString("未展開のメニュー", comment: "Fallback title: unexpanded menu") : title, enabled: false))
                 } else if enabled, !title.isEmpty,
                           try AX.actions(element, budget: budget).contains(kAXPressAction), let root {
                     let id = UUID()
@@ -211,14 +219,16 @@ private final class AXMenuReader {
                                                               element: element, title: title)
                     entries.append(MenuEntry(commandID: id, title: title, enabled: true, mark: mark, shortcut: shortcut))
                 } else {
-                    entries.append(MenuEntry(title: title.isEmpty ? "名称なし（非対応）" : title,
+                    entries.append(MenuEntry(title: title.isEmpty
+                        ? NSLocalizedString("名称なし（非対応）", comment: "Fallback title: unnamed, unsupported item") : title,
                                              enabled: false, mark: mark, shortcut: shortcut))
                 }
             }
             return entries
         } catch {
             truncated = true
-            return [.notice("メニューの取得に失敗しました。元のMacメニューを使用してください。")]
+            return [.notice(NSLocalizedString("メニューの取得に失敗しました。元のMacメニューを使用してください。",
+                                               comment: "Menu notice: failed to retrieve the menu"))]
         }
     }
     private func shortcutString(char: String, modifiers: Int) -> String {

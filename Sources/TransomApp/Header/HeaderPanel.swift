@@ -36,7 +36,7 @@ final class HeaderPanel: NSPanel {
         level = .normal
         contentView = headerView
         conceal()
-        setAccessibilityLabel("Transom 外付けタイトルバー")
+        setAccessibilityLabel(NSLocalizedString("Transom 外付けタイトルバー", comment: "Accessibility label for the external title bar panel"))
     }
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }

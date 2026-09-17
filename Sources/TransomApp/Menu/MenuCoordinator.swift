@@ -39,7 +39,7 @@ final class MenuCoordinator {
         self.permit = permit
         let originalFrame = panel.frame
         guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated else {
-            onStatus?("対象アプリをアクティブにできませんでした。")
+            onStatus?(NSLocalizedString("対象アプリをアクティブにできませんでした。", comment: "Status: failed to activate the target app"))
             cancel()
             return
         }
@@ -78,7 +78,7 @@ final class MenuCoordinator {
                 worker.execute(sessionID: model.sessionID, commandID: command) { [weak self] result in
                     guard let self else { return }
                     if case .failure(let error) = result { self.onStatus?(error.localizedDescription) }
-                    else { self.onStatus?("元アプリへ実行要求を送りました。") }
+                    else { self.onStatus?(NSLocalizedString("元アプリへ実行要求を送りました。", comment: "Status: sent the action to the original app")) }
                     if self.requestID == request { self.cancel() }
                 }
             }
