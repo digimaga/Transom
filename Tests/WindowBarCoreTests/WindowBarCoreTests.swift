@@ -59,6 +59,20 @@ import Foundation
         #expect(Geometry.bestScreen(for: Rect(x: -100, y: 100, width: 700, height: 500),
                                     visibleFrames: [left, right]) == right)
     }
+    @Test func testPanelFrameOnlyExtendsDownwardOverCornerBand() throws {
+        let window = Rect(x: 100, y: 100, width: 700, height: 500)
+        let header = try #require(Geometry.externalHeader(for: window, in: screen))
+        let panel = Geometry.panelFrame(forHeader: header)
+        #expect(panel.x == header.x && panel.y == header.y && panel.width == header.width)
+        #expect(panel.height == header.height + Geometry.cornerFillExtent)
+        // The band covers the corner curve's full run along the edge (about 1.53 x radius) and no more
+        // than the corner region itself; the header keeps clear of the native window entirely.
+        #expect(Geometry.cornerFillExtent >= Geometry.windowCornerRadius * 1.53)
+        #expect(Geometry.cornerFillExtent <= Geometry.windowCornerRadius * 2)
+        #expect(header.intersection(window) == nil)
+        #expect(Geometry.panelFrame(forHeader: header, cornerExtent: 0) == header)
+        #expect(Geometry.panelFrame(forHeader: header, cornerExtent: .nan) == header)
+    }
     @Test func testInvalidRectRejected() {
         #expect(Geometry.externalHeader(for: Rect(x: .nan, y: 50, width: 200, height: 200), in: screen) == nil)
         #expect(Geometry.externalHeader(for: Rect(x: 0, y: 50, width: -20, height: 200), in: screen) == nil)

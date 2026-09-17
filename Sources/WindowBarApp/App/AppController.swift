@@ -267,7 +267,10 @@ final class AppController: NSObject {
                !previous.approximatelyEquals(target.frame, tolerance: 1) { menus.cancel() }
             panel.targetFrame = target.frame
             panel.globalHeaderFrame = external
-            let desired = geometry.appKit(external)
+            // The panel is taller than the header: a transparent band over the target's rounded top corners,
+            // painted only in the two notches. The ordering check uses this larger frame on purpose.
+            let panelFrame = Geometry.panelFrame(forHeader: external)
+            let desired = geometry.appKit(panelFrame)
             if !Rect(panel.frame).approximatelyEquals(Rect(desired), tolerance: 0.25) { panel.setFrame(desired, display: true) }
             let focused = snapshot.focused && current == token.pid
             if panel.renderedAt != snapshot.observedAt || panel.renderedFocused != focused {
@@ -277,7 +280,7 @@ final class AppController: NSObject {
             }
             let panelID = UInt32(exactly: panel.windowNumber) ?? 0
             let safe = OrderingPolicy.isSafe(headerID: panelID, targetID: token.windowID,
-                ownPID: ownPID, headerFrame: external, frontToBack: ordering)
+                ownPID: ownPID, headerFrame: panelFrame, frontToBack: ordering)
             if safe, panel.isVisible {
                 panel.unsafeCount = 0
                 panel.reveal()

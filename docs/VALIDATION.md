@@ -24,9 +24,9 @@
 
 2026-09-16のMac実機引き継ぎで、テストはXCTestからSwift Testing(`import Testing`、`@Suite`/`@Test`/`#expect`)へ移行した。理由は、Xcode未インストールのCommand Line Tools環境にXCTestが含まれず `xcrun swift test` が失敗するため。テスト名・件数(34件)・検証内容は変えていない。Command Line Toolsのみの環境では既定ビルドシステムがTestingマクロのプラグインパスをフロントエンドへ渡さないため、`scripts/verify.sh` が `-Xswiftc -plugin-path` で明示指定する。
 
-## 34件の内訳
+## 34件の内訳（2026-09-17の角埋めで Geometry に1件追加し、現在は35件）
 
-Geometry 10件、HeaderLayout 4件、Identity/Focus 7件、OperationPermit 4件、Presence 3件、Ordering 6件。
+Geometry 10件（現在11件）、HeaderLayout 4件、Identity/Focus 7件、OperationPermit 4件、Presence 3件、Ordering 6件。
 
 同名窓や同一窓の別文書の拒否、タイムアウト後を想定した実行の一回性、取消、期限切れ、100並列要求に対する1回だけのcommit、AXエラーと窓終了の区別、誤った重なり順、複数ディスプレイの負座標、元の操作部に重ならない配置を共通ロジックで確認した。
 
@@ -49,3 +49,5 @@ P1の実機結果（2026-09-17、`docs/ACCEPTANCE.md` に詳細）：合格 P1-0
 未合格・未実行：上記の未実施項目。アプリのアクティブ化経路（activate／activate(from:)／AX frontmost）の単体プローブは実行許可が下りず未計測だが、実アプリでのメニュー実行は成功しているためAX frontmost＋raiseの経路は機能している。
 
 観測した重要事項：非公開のZ-order経路（SkyLightのSLSTransactionSetWindowLevel）はmacOS 26でコード -5（setLevel失敗）を返し使用できなかった。バー表示は公開相対order＋メタデータ照合で正しく機能する。3回失敗で非公開経路を自動停止するよう修正済み（ログ氾濫の解消）。`--capabilities` の `private-relative-ordering=true` は関数の存在を示すのみで、動作可否とは別であることが実機で裏付けられた。
+
+追記（2026-09-17、バー下端の角の隙間埋め）：macOS 26.6（Darwin 25.6.0）／Apple Silicon／Xcodeツールチェーン Swift 6.4。`screencapture -l` で撮った窓画像の透明画素を行ごとに数え、テキストエディットとClaude（Electron）の窓の上角が同一の形状で、CALayerの `cornerCurve = .continuous`・半径16ptの描画と行ごとの誤差1px以内（2x）で一致することを確認した。円弧（半径17pt）では端付近で最大6pxずれる。修正後、バー直下の角領域（窓端から20pt四方）に壁紙の画素が0件（修正前は1600画素中255件）。`bash scripts/verify.sh` はビルドと35件のテストが成功。クリックの透過は、システム全体AXの `AXUIElementCopyElementAtPosition` でバー本体はWindowBarのボタン、帯の透明部分（窓上端から2〜24pt）はテキストエディットの窓、角の塗り部分（窓端から2pt）はWindowBarの窓と返ることで確認し、窓の移動後も同じ結果だった。検証用の非不透明パネルで `ignoresMouseEvents` をfalseに設定すると透明部分の透過が失われ、`invalidateShadow`・再描画・`isOpaque`/背景色の再設定・枠の再設定・orderOut/orderFrontのいずれでも回復しなかったため、HeaderPanelは `ignoresMouseEvents` を使わず内容ビューの非表示で非表示中の入力を防ぐ方式に変更した。alphaValueの0/1切り替えだけでは透過は失われない。未確認：複数ディスプレイ、Retina以外の1xディスプレイでの角の見え方、将来のOSで角丸半径が変わった場合の追従（`Geometry.windowCornerRadius` の定数）。

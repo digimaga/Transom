@@ -16,8 +16,10 @@ final class HeaderPanel: NSPanel {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         isReleasedWhenClosed = false
+        // Non-opaque with a clear background: the band below the header strip is transparent except for the
+        // corner notches, and the window server passes clicks through fully transparent pixels.
         isOpaque = false
-        backgroundColor = .windowBackgroundColor
+        backgroundColor = .clear
         hasShadow = false
         hidesOnDeactivate = false
         isFloatingPanel = false
@@ -29,13 +31,17 @@ final class HeaderPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenNone]
         level = .normal
         contentView = headerView
-        alphaValue = 0
-        ignoresMouseEvents = true
+        conceal()
         setAccessibilityLabel("WindowBar 外付けタイトルバー")
     }
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-    func hide() { alphaValue = 0; ignoresMouseEvents = true; orderOut(nil) }
-    func reveal() { alphaValue = 1; ignoresMouseEvents = false }
-    func probe() { alphaValue = 0; ignoresMouseEvents = true }
+    func hide() { conceal(); orderOut(nil) }
+    func reveal() { headerView.isHidden = false; alphaValue = 1 }
+    func probe() { conceal() }
+    /// Invisible AND intercepting nothing: with the content view hidden the backing store has no opaque
+    /// pixel, so the window server routes every click to the windows below. `ignoresMouseEvents` is
+    /// deliberately never touched: once it has been set to false, the window receives events over its
+    /// whole frame for good, including the transparent band over the target's corners (macOS 26.6).
+    private func conceal() { alphaValue = 0; headerView.isHidden = true }
 }

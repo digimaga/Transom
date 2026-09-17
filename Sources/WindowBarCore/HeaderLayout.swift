@@ -7,7 +7,7 @@ public struct HeaderLayout: Sendable {
     public let overflow: Rect?
     public let visibleMenuCount: Int
 
-    public static func make(width: Double, height: Double = 30,
+    public static func make(width: Double, height: Double = Geometry.headerHeight,
                             appWidth: Double, menuWidths: [Double]) -> HeaderLayout {
         let width = max(0, width), gap = 4.0, inset = 5.0
         let appW = min(max(36, appWidth), max(0, width - 2 * inset - 32))
