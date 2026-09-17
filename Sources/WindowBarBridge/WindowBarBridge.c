@@ -82,3 +82,6 @@ int32_t WBOrderAboveWindow(uint32_t ownWindow, uint32_t targetWindow) {
     return code;
 }
 int32_t WBLastOrderCGError(void) { return lastError; }
+CFArrayRef WBCopyOnScreenWindowIDs(void) {
+    return CGWindowListCreate(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+}

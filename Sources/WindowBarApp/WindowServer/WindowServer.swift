@@ -1,5 +1,7 @@
 import AppKit
 import CoreGraphics
+import OSLog
+import QuartzCore
 import WindowBarBridge
 import WindowBarCore
 
@@ -9,6 +11,24 @@ struct ServerWindow {
     let layer: Int
     let alpha: Double
     let frame: Rect
+
+    init(id: UInt32, pid: Int32, layer: Int, alpha: Double, frame: Rect) {
+        self.id = id; self.pid = pid; self.layer = layer; self.alpha = alpha; self.frame = frame
+    }
+    /// One row of a CGWindowList description. Only metadata keys are read: never kCGWindowName.
+    init?(row: [String: Any]) {
+        guard let id = row[kCGWindowNumber as String] as? NSNumber,
+              let pid = row[kCGWindowOwnerPID as String] as? NSNumber,
+              let layer = row[kCGWindowLayer as String] as? NSNumber,
+              let bounds = row[kCGWindowBounds as String] as? [String: Any],
+              let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+              let number = UInt32(exactly: id.uint64Value) else { return nil }
+        self.id = number
+        self.pid = pid.int32Value
+        self.layer = layer.intValue
+        self.alpha = (row[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1
+        self.frame = Rect(frame)
+    }
 }
 struct ServerSnapshot {
     let windows: [ServerWindow] // ordered front-to-back, including our own transparent probe panels
@@ -20,10 +40,15 @@ struct ServerSnapshot {
 }
 
 /// Reads metadata only: never requests pixels, kCGWindowName, or Screen Recording.
+///
+/// Every CGWindowList query first synchronizes with this connection's last CoreAnimation/SkyLight
+/// transaction (the previous header move or re-order), holding the connection lock while it waits. Run
+/// from a background queue, that wait and the main thread's next commit (which needs the same lock) block
+/// each other until a 0.5 s timeout: observed on macOS 26.6 as a header and its window freezing for half a
+/// second at the end of a drag. So the reads are done on the main thread, right after flushing the pending
+/// transaction, where the synchronization is immediate. A full read costs about a millisecond.
 @MainActor
 final class WindowServer {
-    private let queue = DispatchQueue(label: "WindowBar.WindowMetadata", qos: .userInteractive)
-    private var busy = false
     let privateOrdering = WBHasRelativeOrdering()
     let exactIdentity = WBHasAXWindowID()
     /// Diagnostics only (no window content): last private-path step code, its raw CGError, and failure count.
@@ -34,31 +59,48 @@ final class WindowServer {
     /// This avoids per-frame syscalls and log spam on OS versions where the SkyLight ABI differs.
     private(set) var privateOrderingDisabled = false
     private let privateFailureLimit = 3
+    private static let logger = Logger(subsystem: "dev.local.WindowBar", category: "metadata")
 
-    func read(completion: @escaping (ServerSnapshot?) -> Void) {
+    /// Front-to-back on-screen windows. `own`: this process's window numbers (the header panels) and pid.
+    /// They keep their place in the ordering but are not described: their frames are known locally.
+    func read(own: (pid: Int32, windows: Set<UInt32>)) -> ServerSnapshot? {
         precondition(Thread.isMainThread)
-        guard !busy else { return }
-        busy = true
-        queue.async {
-            let snapshot: ServerSnapshot?
-            if let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] {
-                let windows = raw.compactMap { row -> ServerWindow? in
-                    guard let id = row[kCGWindowNumber as String] as? NSNumber,
-                          let pid = row[kCGWindowOwnerPID as String] as? NSNumber,
-                          let layer = row[kCGWindowLayer as String] as? NSNumber,
-                          let bounds = row[kCGWindowBounds as String] as? [String: Any],
-                          let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
-                          let number = UInt32(exactly: id.uint64Value) else { return nil }
-                    return ServerWindow(id: number, pid: pid.int32Value, layer: layer.intValue,
-                        alpha: (row[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1,
-                        frame: Rect(frame))
-                }
-                snapshot = ServerSnapshot(windows: windows, readAt: ProcessInfo.processInfo.systemUptime)
-            } else { snapshot = nil }
-            // Delivered via the main run loop in common modes, NOT DispatchQueue.main: the main dispatch
-            // queue is not drained while an NSMenu is being tracked, which froze tracking during menus.
-            MainRunLoop.perform { self.busy = false; completion(snapshot) }
+        let started = ProcessInfo.processInfo.systemUptime
+        WindowServer.flushPendingTransaction()
+        guard let list = WBCopyOnScreenWindowIDs()?.takeRetainedValue() else { return nil }
+        var ordered: [UInt32] = []
+        for index in 0..<CFArrayGetCount(list) {
+            ordered.append(UInt32(truncatingIfNeeded: UInt(bitPattern: CFArrayGetValueAtIndex(list, index))))
         }
+        let foreign = ordered.filter { !own.windows.contains($0) }
+        let described = Dictionary(WindowServer.describe(foreign).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var windows: [ServerWindow] = []
+        var seen = Set<UInt32>()
+        for id in ordered where seen.insert(id).inserted {
+            if own.windows.contains(id) {
+                windows.append(ServerWindow(id: id, pid: own.pid, layer: 0, alpha: 1, frame: Rect(x: 0, y: 0, width: 0, height: 0)))
+            } else if let window = described[id] {
+                windows.append(window)
+            }
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        if elapsed > 0.02 {
+            WindowServer.logger.debug("on-screen metadata read took \(elapsed * 1000, format: .fixed(precision: 1), privacy: .public) ms")
+        }
+        return ServerSnapshot(windows: windows, readAt: ProcessInfo.processInfo.systemUptime)
+    }
+    /// Commits the implicit CoreAnimation transaction now, so that a window-list query that follows does
+    /// not wait for the end of the run-loop iteration (or, from another thread, for the lock this commit
+    /// itself needs). Cheap when nothing is pending.
+    static func flushPendingTransaction() { CATransaction.flush() }
+    /// Descriptions of exactly these windows (metadata only). A window that no longer exists is absent.
+    /// Main thread only, after `flushPendingTransaction`, for the reason given on the class.
+    static func describe(_ ids: [UInt32]) -> [ServerWindow] {
+        // CGWindowListCreateDescriptionFromArray takes the raw window IDs as the CFArray values.
+        var pointers: [UnsafeRawPointer?] = ids.map { UnsafeRawPointer(bitPattern: UInt($0)) }
+        guard let array = CFArrayCreate(nil, &pointers, pointers.count, nil),
+              let rows = CGWindowListCreateDescriptionFromArray(array) as? [[String: Any]] else { return [] }
+        return rows.compactMap(ServerWindow.init(row:))
     }
     /// Relative public ordering is tried first; the private transaction aligns sublevel when available.
     /// Both paths remain subject to the independent metadata ordering check before opacity is restored.

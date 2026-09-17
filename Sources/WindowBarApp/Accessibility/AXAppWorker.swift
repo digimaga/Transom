@@ -223,14 +223,40 @@ final class AXAppWorker {
             throw WindowBarError.focusMismatch
         }, completion: completion)
     }
-    func move(_ token: WindowToken, to point: Point, permit: OperationPermit,
+    /// Between thorough checks of one drag: the exact window ID and that the window is still its
+    /// application's focused window. Standard/non-modal/non-minimized state was verified by the last
+    /// thorough check (at most a fraction of a second earlier) and cannot change without the focused
+    /// window changing or the drag being cancelled by an application switch.
+    private func validateDragTarget(_ token: WindowToken) throws -> Record {
+        let record = try exactRecord(token)
+        let focused = AX.element(try AX.value(application, kAXFocusedWindowAttribute))
+        guard let focused, CFEqual(focused, record.element) else {
+            lastFocusMismatch = "focused-window"
+            throw WindowBarError.focusMismatch
+        }
+        return record
+    }
+    /// One step of a header drag. `thorough` runs the full focus/state validation and the settability
+    /// check; otherwise only the exact ID and focused-window identity are re-read, keeping each step to a
+    /// few AX round trips so the window keeps up with the mouse. Returns the frame the window actually
+    /// took (an app may clamp or refuse the position), so the header can be placed on it right away.
+    func move(_ token: WindowToken, to point: Point, thorough: Bool, permit: OperationPermit,
               completion: @escaping @MainActor (Result<Rect, Error>) -> Void) {
+        let enqueued = ProcessInfo.processInfo.systemUptime
         submit({ worker in
-            let record = try worker.validateFocus(token)
-            guard permit.isValid(), worker.lifetime.isValid(), point.x.isFinite, point.y.isFinite,
-                  AX.settable(record.element, kAXPositionAttribute) else { throw WindowBarError.cancelled }
+            let started = ProcessInfo.processInfo.systemUptime
+            let record = thorough ? try worker.validateFocus(token) : try worker.validateDragTarget(token)
+            guard permit.isValid(), worker.lifetime.isValid(), point.x.isFinite, point.y.isFinite else {
+                throw WindowBarError.cancelled
+            }
+            if thorough, !AX.settable(record.element, kAXPositionAttribute) { throw WindowBarError.cancelled }
+            let validated = ProcessInfo.processInfo.systemUptime
             try AX.setPosition(record.element, point)
-            return try AX.frame(record.element)
+            let actual = try AX.frame(record.element)
+            let finished = ProcessInfo.processInfo.systemUptime
+            // Timing only (no titles): queue wait, validation, set+readback, in ms.
+            AXAppWorker.focusLogger.debug("move step ax queue-wait \((started - enqueued) * 1000, format: .fixed(precision: 1), privacy: .public) validate \((validated - started) * 1000, format: .fixed(precision: 1), privacy: .public) set \((finished - validated) * 1000, format: .fixed(precision: 1), privacy: .public)")
+            return actual
         }, completion: completion)
     }
     func reserve(_ token: WindowToken, expected: Rect, desired: Rect, permit: OperationPermit,

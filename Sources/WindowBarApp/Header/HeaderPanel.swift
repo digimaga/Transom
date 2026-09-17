@@ -6,6 +6,8 @@ final class HeaderPanel: NSPanel {
     let headerView = HeaderView(frame: .zero)
     var globalHeaderFrame: Rect?
     var targetFrame: Rect?
+    /// When `targetFrame` was last written by the per-frame tracker (0 = only by the metadata pass).
+    var followedAt: TimeInterval = 0
     var orderRequestedAt: TimeInterval = 0
     var unsafeCount = 0
     var renderedAt: TimeInterval = -1

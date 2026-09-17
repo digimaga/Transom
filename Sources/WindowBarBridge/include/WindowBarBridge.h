@@ -17,6 +17,9 @@ bool WBHasRelativeOrdering(void);
 /// (set level, set sublevel, order, commit). WBLastOrderCGError returns the raw CGError of the last call.
 int32_t WBOrderAboveWindow(uint32_t ownWindow, uint32_t targetWindow);
 int32_t WBLastOrderCGError(void);
+/// Public CoreGraphics API that Swift cannot call directly (CGWindowListCreate): the IDs of the on-screen
+/// windows, front to back, desktop elements excluded. The caller owns the returned array.
+CFArrayRef WBCopyOnScreenWindowIDs(void);
 #ifdef __cplusplus
 }
 #endif

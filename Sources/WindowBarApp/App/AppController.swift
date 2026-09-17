@@ -20,6 +20,7 @@ final class AppController: NSObject {
     private let server = WindowServer()
     private let menus = MenuCoordinator()
     private let drag = DragCoordinator()
+    private let tracker = FrameTracker()
     private let logger = Logger(subsystem: "dev.local.WindowBar", category: "runtime")
     private var workers: [Int32: WorkerState] = [:]
     private var panels: [WindowToken: HeaderPanel] = [:]
@@ -38,8 +39,12 @@ final class AppController: NSObject {
     private var lastApplicationsRefresh: TimeInterval = 0
     private var lastMetadataRequest: TimeInterval = 0
     private var lastPermissionCheck: TimeInterval = 0
+    /// Until when the per-frame tracker and the fast metadata poll stay on after the last mouse-down/drag.
+    private var interactionUntil: TimeInterval = 0
+    /// Until when metadata is re-read at the fast cadence because an ordering change is being confirmed
+    /// (a header was just re-ordered above its target, or the frontmost application changed).
+    private var fastPollUntil: TimeInterval = 0
     private var lastMessage = "準備中"
-    private var currentEpoch = UUID()
     private var dirtyApplications = Set<Int32>()
     private var reservePermit: OperationPermit?
     private var reserveTarget: WindowToken?
@@ -59,8 +64,20 @@ final class AppController: NSObject {
         menus.isTargetValid = { [weak self] token in self?.valid(token) ?? false }
         menus.onStatus = { [weak self] message in self?.status(message) }
         drag.onStatus = { [weak self] message in self?.status(message) }
-        drag.onMoved = { [weak self] token, _ in self?.dirtyApplications.insert(token.pid); self?.requestMetadata() }
+        // The drag target was just raised above its header by the AX raise: put the header back above it
+        // now instead of waiting for the metadata pass to notice, and confirm the order at the fast cadence.
+        drag.onReady = { [weak self] token in
+            guard let self, let panel = self.panels[token], panel.isVisible else { return }
+            self.server.order(panel, above: token.windowID)
+            self.fastPollUntil = max(self.fastPollUntil, ProcessInfo.processInfo.systemUptime + 0.15)
+        }
+        // Place the header on the frame the window just took, in the same frame when possible. The regular
+        // metadata pass is not forced per step (it would only add main-thread work during the drag).
+        drag.onMoved = { [weak self] token, frame in self?.follow([token.windowID: frame]) }
+        drag.onFinished = { [weak self] token in self?.dirtyApplications.insert(token.pid); self?.requestMetadata() }
         AXObserverHub.shared.onChange = { [weak self] pid in self?.dirtyApplications.insert(pid) }
+        tracker.windowIDs = { [weak self] in self?.trackedWindowIDs() ?? [] }
+        tracker.onFrames = { [weak self] frames in self?.follow(frames) }
         observeWorkspace()
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -101,6 +118,7 @@ final class AppController: NSObject {
             if let target = self.drag.target, target.pid != pid { self.drag.cancel() }
             if let target = self.reserveTarget, target.pid != pid { self.reservePermit?.cancel() }
             if let pid { self.dirtyApplications.insert(pid) }
+            self.fastPollUntil = ProcessInfo.processInfo.systemUptime + 0.3
             self.requestMetadata()
         }
         observe(workspace, NSWorkspace.activeSpaceDidChangeNotification) { [weak self] _ in self?.transition() }
@@ -126,13 +144,23 @@ final class AppController: NSObject {
             updateStatusLine()
             return
         }
-        if !running { running = true; currentEpoch = UUID(); lastApplicationsRefresh = 0 }
+        if !running { running = true; lastApplicationsRefresh = 0 }
         if now - lastApplicationsRefresh > 2 { refreshApplications(); lastApplicationsRefresh = now }
+        // A held mouse button may be a native move/resize of any window; a header drag moves one through AX.
+        // Both keep the per-frame tracker and the fast metadata poll on, plus a short tail after release
+        // so the final position (and any snap the app applies afterwards) is caught without delay.
+        if NSEvent.pressedMouseButtons != 0 || drag.target != nil { interactionUntil = now + 0.3 }
+        let interacting = now < interactionUntil
         for (pid, state) in workers where !state.scanning {
-            let dirty = dirtyApplications.contains(pid)
-            if (dirty && now - state.lastScan > 0.08) || now - state.lastScan > 1.5 { scan(pid: pid) }
+            // Every move raises AXMoved and marks the application dirty. During an interaction the scan
+            // (titles, focus, sheets) is not urgent, and for the header-drag target it would sit on the same
+            // serial AX queue as the move steps, delaying each step behind a whole window read.
+            let dirty = dirtyApplications.contains(pid) && drag.target?.pid != pid
+            let dirtyInterval = interacting ? 0.3 : 0.08
+            if (dirty && now - state.lastScan > dirtyInterval) || now - state.lastScan > 1.5 { scan(pid: pid) }
         }
-        let interval = NSEvent.pressedMouseButtons != 0 || drag.target != nil ? 0.05 : 0.5
+        if interacting != tracker.isRunning { interacting ? tracker.start() : tracker.stop() }
+        let interval = interacting || now < fastPollUntil ? 0.05 : 0.5
         if now - lastMetadataRequest >= interval { requestMetadata() }
         extraPermits.removeAll { !$0.isValid() }
     }
@@ -189,11 +217,48 @@ final class AppController: NSObject {
     private func requestMetadata() {
         guard running else { return }
         lastMetadataRequest = ProcessInfo.processInfo.systemUptime
-        let epoch = currentEpoch
-        server.read { [weak self] snapshot in
-            guard let self, self.running, epoch == self.currentEpoch else { return }
-            self.metadata = snapshot
-            self.render()
+        let own = Set(panels.values.compactMap { UInt32(exactly: $0.windowNumber) })
+        metadata = server.read(own: (pid: ownPID, windows: own))
+        render()
+    }
+    /// Windows whose bounds are polled several times per frame during an interaction: the frontmost
+    /// application's windows (a native move/resize goes to the clicked window, which activates its
+    /// application) and the current header-drag target. The query cost grows with the count, so headers of
+    /// background applications stay on the regular metadata cadence (a Cmd-drag of a background window
+    /// is followed at that cadence, as before).
+    private func trackedWindowIDs() -> [UInt32] {
+        let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? lastFrontmostPID
+        var ids: [UInt32] = []
+        for (token, panel) in panels where panel.isVisible && (token.pid == frontmost || token == drag.target) {
+            ids.append(token.windowID)
+        }
+        return ids
+    }
+    /// Per-frame path while the user is moving or resizing: only repositions headers that are already
+    /// shown, using the same placement rules as `render`. Eligibility, ordering and focus are NOT decided
+    /// here; the regular metadata pass keeps doing that at its own cadence and hides what must be hidden.
+    private func follow(_ frames: [UInt32: Rect]) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard running, now >= quarantineUntil else { return }
+        var geometry: ScreenGeometry?
+        for (token, panel) in panels {
+            guard panel.isVisible, let frame = frames[token.windowID], let previous = panel.targetFrame,
+                  !previous.approximatelyEquals(frame, tolerance: 0.25) else { continue }
+            if geometry == nil { geometry = ScreenGeometry.current() }
+            guard let geometry else { return }
+            panel.targetFrame = frame
+            panel.followedAt = now
+            if menus.target == token { menus.cancel() }
+            guard Geometry.isEligibleSize(frame),
+                  let screen = Geometry.bestScreen(for: frame, visibleFrames: geometry.visibleFrames),
+                  let external = Geometry.externalHeader(for: frame, in: screen) else {
+                panel.hide()
+                continue
+            }
+            panel.globalHeaderFrame = external
+            let desired = geometry.appKit(Geometry.panelFrame(forHeader: external))
+            let resized = abs(desired.width - panel.frame.width) > 0.25 || abs(desired.height - panel.frame.height) > 0.25
+            if resized { panel.setFrame(desired, display: true) } else { panel.setFrameOrigin(desired.origin) }
         }
     }
     private func transition() {
@@ -205,8 +270,8 @@ final class AppController: NSObject {
         requestMetadata()
     }
     private func suspend() {
-        currentEpoch = UUID()
         running = false
+        tracker.stop()
         menus.cancel(); drag.cancel(); reservePermit?.cancel()
         extraPermits.forEach { $0.cancel() }; extraPermits.removeAll()
         for pid in Array(workers.keys) { retire(pid) }
@@ -246,13 +311,17 @@ final class AppController: NSObject {
         for token in Array(panels.keys) where !known.contains(token) { removePanel(token) }
         for snapshot in snapshots {
             let token = snapshot.token
+            // While the per-frame tracker is on, its reading of this window is newer than this snapshot:
+            // placing from the snapshot would pull the header back to a stale position for one frame.
+            let followed = panels[token].flatMap { $0.followedAt > metadata.readAt ? $0.targetFrame : nil }
             guard valid(token), let target = byID[token.windowID],
                   // The on-screen frame must ALSO be a real window: Stage Manager strip thumbnails keep the
                   // AX frame at full size while the CG frame shrinks to ~100pt (observed on macOS 26).
-                  Geometry.isEligibleSize(target.frame),
-                  !geometry.fullFrames.contains(where: { $0.approximatelyEquals(target.frame, tolerance: 1) }),
-                  let screen = Geometry.bestScreen(for: target.frame, visibleFrames: geometry.visibleFrames),
-                  let external = Geometry.externalHeader(for: target.frame, in: screen) else {
+                  case let frame = followed ?? target.frame,
+                  Geometry.isEligibleSize(frame),
+                  !geometry.fullFrames.contains(where: { $0.approximatelyEquals(frame, tolerance: 1) }),
+                  let screen = Geometry.bestScreen(for: frame, visibleFrames: geometry.visibleFrames),
+                  let external = Geometry.externalHeader(for: frame, in: screen) else {
                 panels[token]?.hide()
                 menus.cancel(ifTarget: token)
                 continue
@@ -264,8 +333,8 @@ final class AppController: NSObject {
                 panels[token] = panel
             }
             if let menuTarget = menus.target, menuTarget == token, let previous = panel.targetFrame,
-               !previous.approximatelyEquals(target.frame, tolerance: 1) { menus.cancel() }
-            panel.targetFrame = target.frame
+               !previous.approximatelyEquals(frame, tolerance: 1) { menus.cancel() }
+            panel.targetFrame = frame
             panel.globalHeaderFrame = external
             // The panel is taller than the header: a transparent band over the target's rounded top corners,
             // painted only in the two notches. The ordering check uses this larger frame on purpose.
@@ -282,14 +351,21 @@ final class AppController: NSObject {
             let safe = OrderingPolicy.isSafe(headerID: panelID, targetID: token.windowID,
                 ownPID: ownPID, headerFrame: panelFrame, frontToBack: ordering)
             if safe, panel.isVisible {
+                if panel.alphaValue < 1 { logger.debug("reveal panel=\(panelID, privacy: .public) target=\(token.windowID, privacy: .public) unsafeCount=\(panel.unsafeCount, privacy: .public)") }
                 panel.unsafeCount = 0
                 panel.reveal()
             } else {
+                if panel.alphaValue >= 1 { logger.debug("conceal panel=\(panelID, privacy: .public) target=\(token.windowID, privacy: .public) safe=\(safe, privacy: .public) visible=\(panel.isVisible, privacy: .public)") }
                 panel.probe()
                 if now - panel.orderRequestedAt > 0.12 {
                     panel.orderRequestedAt = now
                     panel.unsafeCount += 1
                     let wasDisabled = server.privateOrderingDisabled
+                    // Confirm the new order at the fast cadence so the header is back within about a frame
+                    // or two instead of waiting for the idle poll. Bounded: a header that keeps failing
+                    // the check (covered by a foreign window) drops back to the idle cadence.
+                    if panel.unsafeCount <= 2 { fastPollUntil = max(fastPollUntil, now + 0.15) }
+                    logger.debug("order panel=\(panelID, privacy: .public) above=\(token.windowID, privacy: .public) unsafeCount=\(panel.unsafeCount, privacy: .public)")
                     if !server.order(panel, above: token.windowID) { panel.hide() }
                     else if server.privateOrderingDisabled && !wasDisabled {
                         // Logged once, when the private path is first given up on. No per-frame spam.

@@ -31,11 +31,16 @@ public enum Geometry {
     /// rest of the band stays fully transparent and therefore click-through.
     public static var cornerFillExtent: Double { (windowCornerRadius * 1.6).rounded(.up) }
     /// Never covers native controls, clamps onto content, or mutates the target.
+    /// The header needs its full height inside the usable screen area (never over the menu bar, never
+    /// pushed onto the window). Sideways or downward overflow of the window past the screen edges is fine:
+    /// the header follows the window and is simply cut off at the edge like the window itself, as long
+    /// as some part of it remains on this screen.
     public static func externalHeader(for window: Rect, in visibleFrame: Rect,
                                       height: Double = headerHeight) -> Rect? {
         guard window.isValid, visibleFrame.isValid, height.isFinite, height > 0 else { return nil }
         let header = Rect(x: window.x, y: window.y - height, width: window.width, height: height)
-        return visibleFrame.contains(header, tolerance: 0.5) ? header : nil
+        let fitsVertically = header.y >= visibleFrame.y - 0.5 && header.maxY <= visibleFrame.maxY + 0.5
+        return fitsVertically && header.intersection(visibleFrame) != nil ? header : nil
     }
     /// The panel that hosts a header: the header itself plus the corner-fill band that overlaps the
     /// target's rounded top corners. Everything in the band except the two notches is transparent.

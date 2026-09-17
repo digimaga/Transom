@@ -18,6 +18,22 @@ import Foundation
         let window = Rect(x: 0, y: 25, width: 700, height: 500)
         #expect(Geometry.externalHeader(for: window, in: screen) == nil)
         #expect(window.y == 25)
+        // Partly above the usable area (under the menu bar): still no header, never a clamped one.
+        #expect(Geometry.externalHeader(for: Rect(x: 0, y: 40, width: 700, height: 500), in: screen) == nil)
+    }
+    @Test func testHeaderFollowsWindowOverflowingScreenEdges() throws {
+        // Off the left edge, off the right edge, and below the bottom: the header keeps the window's x
+        // and width (cut off at the edge like the window), never a clamped or shrunk one.
+        for window in [Rect(x: -300, y: 100, width: 700, height: 500),
+                       Rect(x: 1200, y: 100, width: 700, height: 500),
+                       Rect(x: 100, y: 800, width: 700, height: 500),
+                       Rect(x: -300, y: 800, width: 700, height: 500)] {
+            let header = try #require(Geometry.externalHeader(for: window, in: screen))
+            #expect(header.x == window.x && header.width == window.width)
+            #expect(header.maxY == window.y && header.height == 30)
+        }
+        // Entirely beside the screen: nothing to show here.
+        #expect(Geometry.externalHeader(for: Rect(x: 1500, y: 100, width: 700, height: 500), in: screen) == nil)
     }
     @Test func testReserveOnlyChangesRequestedWindow() throws {
         let input = Rect(x: 0, y: 25, width: 700, height: 850)
