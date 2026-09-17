@@ -55,7 +55,9 @@ final class WindowServer {
                 }
                 snapshot = ServerSnapshot(windows: windows, readAt: ProcessInfo.processInfo.systemUptime)
             } else { snapshot = nil }
-            DispatchQueue.main.async { self.busy = false; completion(snapshot) }
+            // Delivered via the main run loop in common modes, NOT DispatchQueue.main: the main dispatch
+            // queue is not drained while an NSMenu is being tracked, which froze tracking during menus.
+            MainRunLoop.perform { self.busy = false; completion(snapshot) }
         }
     }
     /// Relative public ordering is tried first; the private transaction aligns sublevel when available.

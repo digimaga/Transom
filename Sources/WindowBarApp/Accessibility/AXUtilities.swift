@@ -43,6 +43,14 @@ enum AX {
     static func children(_ element: AXUIElement, budget: AXBudget? = nil) throws -> [AXUIElement] {
         elements(try value(element, kAXChildrenAttribute, budget: budget))
     }
+    /// True if a sheet is attached to the window. On macOS 26 an NSAlert sheet is NOT listed in
+    /// kAXSheetsAttribute (observed: 0 entries) and only appears as an AXSheet child, so both are checked.
+    static func hasSheet(_ window: AXUIElement, budget: AXBudget? = nil) throws -> Bool {
+        if !elements(try value(window, "AXSheets", budget: budget)).isEmpty { return true }
+        for child in try children(window, budget: budget).prefix(16)
+        where try string(child, kAXRoleAttribute, budget: budget) == "AXSheet" { return true }
+        return false
+    }
     static func windowID(_ element: AXUIElement) throws -> UInt32 {
         configure(element)
         var id: UInt32 = 0

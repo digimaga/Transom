@@ -32,6 +32,10 @@
 
 **一部解消（2026-09-17）：WindowServerとの実際の並び順。** macOS 26／Apple Siliconで実機確認した。透明パネルはCGの `optionOnScreenOnly` 一覧に含まれ、`OrderingPolicy.isSafe` のメタデータ照合が機能し、バーは対象窓の直前へ正しく表示された（前面の別アプリ窓が両者より前のとき背面窓のバーが浮かないことも確認）。ただし非公開経路（SkyLightのSLSTransactionSetWindowLevel）はこのOSでコード -5（setLevel失敗）を返し使えなかった。CGErrorの戻り値も正規のコードではなく、ABIが想定と異なる。現在は3回失敗した時点で非公開経路を自動停止し、以後は公開相対order＋メタデータ照合のみで動作する（バー表示は正常）。多数窓・複雑な重なりでの網羅確認とSkyLight ABIの精査は未完了。
 
+**解消（2026-09-17）：NSMenu追跡中に追従・取消が止まる。** メニューを開いている間、タイマー（tick）は動くのに `render` が一度も走らず、対象窓を閉じてもメニューが残り、他窓のバーも旧位置に留まった。診断ログで、`DispatchQueue.main.async` で運んでいたワーカーとメタデータ読み取りの完了通知がNSMenuの追跡ループ中は配送されないことを確認した（メニューを閉じた直後にmetadataAge約6.5秒でrenderが再開）。対策として `MainRunLoop.perform`（`RunLoop.main.perform(inModes: [.common])` ＋ `CFRunLoopWakeUp`）を追加し、AXAppWorker.submit、WindowServer.read、AXObserverHubの配送をそれへ切り替えた。修正後はメニュー表示中も他窓のバーが0.5秒以内に追従し、対象窓のクローズや別アプリ切替から0.25秒以内にメニューが閉じる。実行拒否自体は修正前から機能していたが、UI上の残存が解消した。
+
+**解消（2026-09-17）：NSAlertのシートを検知できない。** macOS 26ではNSAlertのシートが窓の `AXSheets` 属性に現れず（0件）、子要素の `AXSheet` としてのみ現れるため、`modal` 判定をすり抜けてシート表示中もバーが残った。`AX.hasSheet` で子要素（先頭16件）の役割も確認するようにし、走査と `validateFocus` の両方で使う。修正後はシート表示中にバーが消え、閉じると復帰する。
+
 **解消（2026-09-17）：Chromium/Electron系アプリでの「フォーカス確認不可」。** Claude（Electron）の外付けバーからメニューを開くと、`validateFocus` が0.6秒以内に通らず拒否された。理由コードを記録する診断（`AXAppWorker.lastFocusMismatch`、`focus` カテゴリのログ。文書名等は含まない）を追加して特定したところ、Chromium系アプリが前面のときシステム全体の `AXFocusedApplication` が値を返さない（nil）ことが原因だった。対策として `AXAppWorker.frontmostPID()` を追加し、AXが無回答（nil）のときに限り `NSWorkspace.frontmostApplication` を前面判定に使う。AXが別PIDを返す場合は従来どおり不一致として拒否し、対象窓のAXFocusedWindow一致・ウィンドウID一致・役割・状態の検証は変更していない。`validateWitness`（文脈の再照合）とメニュー見出しの照合にも理由コードのログを追加した。修正後、Claudeのメニューが無効項目のグレー表示を含めて正しく展開した。Chrome・Safari等の他のChromium/WebKit系アプリでの再確認は未実施。
 
 **解消（2026-09-17）：NSMenu前後のフォーカスとメニュー実行の対象一致。** WindowBarLabの同名2窓で確認した。A窓のバーのコピーでクリップボードにA窓の行が入り、A窓のバーの検証保存で `window=A`、B窓のバーの検証保存で `window=B` が記録された。各バーは自分の対象窓に対してのみ作用し、取り違えは観測されなかった。なお対象窓が他窓に隠れてメニューボタンを押せない状況では操作が無反応（実行されない安全側）になる。

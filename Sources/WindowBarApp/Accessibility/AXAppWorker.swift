@@ -37,7 +37,7 @@ final class AXAppWorker {
                 guard self.lifetime.isValid() else { throw WindowBarError.cancelled }
                 return try body(self)
             }
-            DispatchQueue.main.async { completion(result) }
+            MainRunLoop.perform { completion(result) } // not DispatchQueue.main: must run during NSMenu tracking
         }
     }
     func installObserver(_ observer: AXObserver) {
@@ -117,7 +117,9 @@ final class AXAppWorker {
                 let frame = Rect(x: Double(position.x), y: Double(position.y),
                                  width: Double(size.width), height: Double(size.height))
                 let modal = (values["AXModal"] as? NSNumber)?.boolValue ?? false
-                let hasSheets = !(values["AXSheets"] as? [AnyObject] ?? []).isEmpty
+                // AXSheets is empty for NSAlert sheets on macOS 26; also look for an AXSheet child.
+                let hasSheets = !(values["AXSheets"] as? [AnyObject] ?? []).isEmpty ||
+                    ((try? AX.hasSheet(element, budget: budget)) ?? false)
                 let standard = (values[kAXRoleAttribute] as? String) == kAXWindowRole &&
                                (values[kAXSubroleAttribute] as? String) == kAXStandardWindowSubrole
                 let snapshot = WindowSnapshot(token: token, appName: descriptor.name,
@@ -182,7 +184,7 @@ final class AXAppWorker {
             else if try AX.bool(record.element, kAXMinimizedAttribute) == true { reason = "minimized" }
             else if try AX.bool(record.element, "AXFullScreen") == true { reason = "fullscreen" }
             else if try AX.bool(record.element, "AXModal") == true { reason = "modal" }
-            else if !AX.elements(try AX.value(record.element, "AXSheets")).isEmpty { reason = "sheets" }
+            else if try AX.hasSheet(record.element) { reason = "sheets" }
             else { reason = nil }
             if let reason { lastFocusMismatch = reason; throw WindowBarError.focusMismatch }
         } catch let error as WindowBarError {

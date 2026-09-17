@@ -15,7 +15,9 @@ final class AXObserverHub {
         let error = AXObserverCreate(pid, { _, element, _, _ in
             var pid: pid_t = 0
             guard AXUIElementGetPid(element, &pid) == .success else { return }
-            DispatchQueue.main.async { AXObserverHub.shared.onChange?(pid) }
+            // The observer source lives on the main run loop, so this callback is already on the main
+            // thread. Call through directly: a DispatchQueue.main hop would stall during NSMenu tracking.
+            MainActor.assumeIsolated { AXObserverHub.shared.onChange?(pid) }
         }, &observer)
         guard error == .success, let observer else { return nil }
         observers[pid] = observer

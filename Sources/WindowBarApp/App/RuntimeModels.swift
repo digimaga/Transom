@@ -61,6 +61,16 @@ extension Rect {
     var cgRect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
 }
 
+/// Main-thread delivery that keeps working while an NSMenu is tracking. DispatchQueue.main blocks are
+/// NOT drained during menu tracking (observed on macOS 26: no render for the whole menu lifetime), but
+/// run-loop blocks in common modes are. Every worker→UI completion goes through here.
+enum MainRunLoop {
+    static func perform(_ block: @escaping @MainActor () -> Void) {
+        RunLoop.main.perform(inModes: [.common]) { MainActor.assumeIsolated { block() } }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
+    }
+}
+
 struct ScreenGeometry {
     let primaryHeight: Double
     let visibleFrames: [Rect]
