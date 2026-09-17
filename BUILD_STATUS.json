@@ -1,0 +1,20 @@
+{
+  "version": "0.1.0-dev",
+  "date": "2026-09-16",
+  "authoringPlatform": "Linux x86_64 (initial); macOS 26 arm64 (handoff verification)",
+  "swiftToolchain": "6.4 (Command Line Tools, no Xcode)",
+  "swiftLanguageMode": "5",
+  "testFramework": "Swift Testing (migrated from XCTest on 2026-09-16)",
+  "coreTestsExecuted": 34,
+  "coreTestsFailed": 0,
+  "swiftSyntaxParsePerformed": true,
+  "macOSAppTypeCheckPerformed": true,
+  "macOSBridgeCompiled": true,
+  "macOSAppLinked": true,
+  "macOSAppBundleBuilt": true,
+  "macOSCapabilities": {"exact-window-id": true, "private-relative-ordering": true},
+  "macOSRuntimeTestsPerformed": false,
+  "githubActionsExecuted": false,
+  "notarized": false,
+  "status": "compiled and unit-tested on macOS 26; GUI/AX/WindowServer acceptance tests (ACCEPTANCE.md P0-02 onward) not yet performed"
+}

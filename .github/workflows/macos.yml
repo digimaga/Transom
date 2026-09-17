@@ -1,0 +1,22 @@
+name: macOS build and portable tests
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: xcrun swift --version
+      - name: Build, type-check and test
+        run: bash scripts/verify.sh
+      - name: Bundle local development app
+        run: bash scripts/build-app.sh --debug
+      - name: Preserve macOS app file modes
+        run: ditto -c -k --sequesterRsrc --keepParent dist/WindowBar.app dist/WindowBar-dev.app.zip
+      - name: Upload development app
+        uses: actions/upload-artifact@v4
+        with:
+          name: WindowBar-local-dev
+          path: dist/WindowBar-dev.app.zip
+# This workflow has not been executed by the authoring environment.
+# CI compilation does NOT exercise live Accessibility, Spaces, focus or WindowServer.

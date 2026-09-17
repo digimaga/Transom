@@ -1,0 +1,122 @@
+Building for debugging...
+[0/13] Write sources
+[2/13] Write swift-version--1BA0962812E73E12.txt
+[4/18] Compiling WindowBarCore OperationPermit.swift
+[5/18] Compiling WindowBarCore Geometry.swift
+[6/18] Compiling WindowBarCore HeaderLayout.swift
+[7/18] Emitting module WindowBarCore
+[8/18] Compiling WindowBarCore Models.swift
+[9/19] Wrapping AST for WindowBarCore for debugging
+[11/21] Compiling WindowBarCoreTests WindowBarCoreTests.swift
+[12/21] Emitting module WindowBarCoreTests
+[13/22] <PROJECT_ROOT>/.build/x86_64-unknown-linux-gnu/debug/WindowBarPackageDiscoveredTests.derived/all-discovered-tests.swift
+[14/22] Write sources
+[15/22] Wrapping AST for WindowBarCoreTests for debugging
+[17/25] Emitting module WindowBarPackageDiscoveredTests
+[18/25] Compiling WindowBarPackageDiscoveredTests WindowBarCoreTests.swift
+[19/25] Compiling WindowBarPackageDiscoveredTests all-discovered-tests.swift
+[20/26] <PROJECT_ROOT>/.build/x86_64-unknown-linux-gnu/debug/WindowBarPackageTests.derived/runner.swift
+[21/26] Write sources
+[22/26] Wrapping AST for WindowBarPackageDiscoveredTests for debugging
+[24/28] Emitting module WindowBarPackageTests
+[25/28] Compiling WindowBarPackageTests runner.swift
+[26/29] Wrapping AST for WindowBarPackageTests for debugging
+[27/29] Write Objects.LinkFileList
+[28/29] Linking WindowBarPackageTests.xctest
+Build complete! (7.52s)
+Test Suite 'All tests' started at 2026-09-10 05:45:26.027
+Test Suite 'debug.xctest' started at 2026-09-10 05:45:26.039
+Test Suite 'GeometryTests' started at 2026-09-10 05:45:26.039
+Test Case 'GeometryTests.testBestScreenUsesLargestIntersection' started at 2026-09-10 05:45:26.039
+Test Case 'GeometryTests.testBestScreenUsesLargestIntersection' passed (0.001 seconds)
+Test Case 'GeometryTests.testCoordinateConversionRoundTrip' started at 2026-09-10 05:45:26.040
+Test Case 'GeometryTests.testCoordinateConversionRoundTrip' passed (0.101 seconds)
+Test Case 'GeometryTests.testExternalHeaderDoesNotOverlapNativeWindow' started at 2026-09-10 05:45:26.141
+Test Case 'GeometryTests.testExternalHeaderDoesNotOverlapNativeWindow' passed (0.0 seconds)
+Test Case 'GeometryTests.testInvalidRectRejected' started at 2026-09-10 05:45:26.142
+Test Case 'GeometryTests.testInvalidRectRejected' passed (0.0 seconds)
+Test Case 'GeometryTests.testNegativeCoordinateSecondaryDisplay' started at 2026-09-10 05:45:26.142
+Test Case 'GeometryTests.testNegativeCoordinateSecondaryDisplay' passed (0.0 seconds)
+Test Case 'GeometryTests.testNoSpaceMeansNoOverlayAndNoMutation' started at 2026-09-10 05:45:26.142
+Test Case 'GeometryTests.testNoSpaceMeansNoOverlayAndNoMutation' passed (0.0 seconds)
+Test Case 'GeometryTests.testPointerConversionRoundTrip' started at 2026-09-10 05:45:26.142
+Test Case 'GeometryTests.testPointerConversionRoundTrip' passed (0.0 seconds)
+Test Case 'GeometryTests.testReserveIsIdempotent' started at 2026-09-10 05:45:26.142
+Test Case 'GeometryTests.testReserveIsIdempotent' passed (0.0 seconds)
+Test Case 'GeometryTests.testReserveOnlyChangesRequestedWindow' started at 2026-09-10 05:45:26.142
+Test Case 'GeometryTests.testReserveOnlyChangesRequestedWindow' passed (0.0 seconds)
+Test Case 'GeometryTests.testReserveRejectsImpossibleScreen' started at 2026-09-10 05:45:26.142
+Test Case 'GeometryTests.testReserveRejectsImpossibleScreen' passed (0.0 seconds)
+Test Suite 'GeometryTests' passed at 2026-09-10 05:45:26.142
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.103 (0.103) seconds
+Test Suite 'IdentityAndFocusTests' started at 2026-09-10 05:45:26.142
+Test Case 'IdentityAndFocusTests.testExactContextAllowed' started at 2026-09-10 05:45:26.142
+Test Case 'IdentityAndFocusTests.testExactContextAllowed' passed (0.0 seconds)
+Test Case 'IdentityAndFocusTests.testInactiveAppRejected' started at 2026-09-10 05:45:26.142
+Test Case 'IdentityAndFocusTests.testInactiveAppRejected' passed (0.0 seconds)
+Test Case 'IdentityAndFocusTests.testModalAndMinimizedRejected' started at 2026-09-10 05:45:26.143
+Test Case 'IdentityAndFocusTests.testModalAndMinimizedRejected' passed (0.0 seconds)
+Test Case 'IdentityAndFocusTests.testRestartedProcessIsNotSameIdentity' started at 2026-09-10 05:45:26.143
+Test Case 'IdentityAndFocusTests.testRestartedProcessIsNotSameIdentity' passed (0.0 seconds)
+Test Case 'IdentityAndFocusTests.testReusedWindowIDIsNotSameIdentity' started at 2026-09-10 05:45:26.143
+Test Case 'IdentityAndFocusTests.testReusedWindowIDIsNotSameIdentity' passed (0.0 seconds)
+Test Case 'IdentityAndFocusTests.testSameTitleDifferentWindowsRejected' started at 2026-09-10 05:45:26.143
+Test Case 'IdentityAndFocusTests.testSameTitleDifferentWindowsRejected' passed (0.0 seconds)
+Test Case 'IdentityAndFocusTests.testSameWindowDifferentTabDocumentRejected' started at 2026-09-10 05:45:26.143
+Test Case 'IdentityAndFocusTests.testSameWindowDifferentTabDocumentRejected' passed (0.0 seconds)
+Test Suite 'IdentityAndFocusTests' passed at 2026-09-10 05:45:26.143
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'LayoutTests' started at 2026-09-10 05:45:26.143
+Test Case 'LayoutTests.testNarrowHeaderProvidesOverflow' started at 2026-09-10 05:45:26.143
+Test Case 'LayoutTests.testNarrowHeaderProvidesOverflow' passed (0.101 seconds)
+Test Case 'LayoutTests.testNoMenusStillShowsTitle' started at 2026-09-10 05:45:26.244
+Test Case 'LayoutTests.testNoMenusStillShowsTitle' passed (0.0 seconds)
+Test Case 'LayoutTests.testNoOverlappingOrOutOfBoundsControls' started at 2026-09-10 05:45:26.244
+Test Case 'LayoutTests.testNoOverlappingOrOutOfBoundsControls' passed (0.001 seconds)
+Test Case 'LayoutTests.testWideHeaderShowsAllMenus' started at 2026-09-10 05:45:26.245
+Test Case 'LayoutTests.testWideHeaderShowsAllMenus' passed (0.0 seconds)
+Test Suite 'LayoutTests' passed at 2026-09-10 05:45:26.245
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.102 (0.102) seconds
+Test Suite 'OrderingTests' started at 2026-09-10 05:45:26.245
+Test Case 'OrderingTests.testAdjacentHeaderAndTargetAllowed' started at 2026-09-10 05:45:26.245
+Test Case 'OrderingTests.testAdjacentHeaderAndTargetAllowed' passed (0.0 seconds)
+Test Case 'OrderingTests.testForeignWindowInFrontOfBothIsCorrect' started at 2026-09-10 05:45:26.246
+Test Case 'OrderingTests.testForeignWindowInFrontOfBothIsCorrect' passed (0.0 seconds)
+Test Case 'OrderingTests.testHeaderBehindTargetRejected' started at 2026-09-10 05:45:26.246
+Test Case 'OrderingTests.testHeaderBehindTargetRejected' passed (0.0 seconds)
+Test Case 'OrderingTests.testIncorrectlyFloatingHeaderRejected' started at 2026-09-10 05:45:26.246
+Test Case 'OrderingTests.testIncorrectlyFloatingHeaderRejected' passed (0.0 seconds)
+Test Case 'OrderingTests.testMissingIDsRejected' started at 2026-09-10 05:45:26.246
+Test Case 'OrderingTests.testMissingIDsRejected' passed (0.0 seconds)
+Test Case 'OrderingTests.testNonIntersectingIntermediateWindowAllowed' started at 2026-09-10 05:45:26.246
+Test Case 'OrderingTests.testNonIntersectingIntermediateWindowAllowed' passed (0.0 seconds)
+Test Suite 'OrderingTests' passed at 2026-09-10 05:45:26.246
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'PermitTests' started at 2026-09-10 05:45:26.246
+Test Case 'PermitTests.testAtMostOnceAfterSuccessOrUnknownOutcome' started at 2026-09-10 05:45:26.246
+Test Case 'PermitTests.testAtMostOnceAfterSuccessOrUnknownOutcome' passed (0.0 seconds)
+Test Case 'PermitTests.testCancelledOperationCannotCommit' started at 2026-09-10 05:45:26.246
+Test Case 'PermitTests.testCancelledOperationCannotCommit' passed (0.0 seconds)
+Test Case 'PermitTests.testConcurrentDoubleClickHasOnlyOneCommit' started at 2026-09-10 05:45:26.246
+Test Case 'PermitTests.testConcurrentDoubleClickHasOnlyOneCommit' passed (0.0 seconds)
+Test Case 'PermitTests.testExpiredOperationCannotCommit' started at 2026-09-10 05:45:26.247
+Test Case 'PermitTests.testExpiredOperationCannotCommit' passed (0.1 seconds)
+Test Suite 'PermitTests' passed at 2026-09-10 05:45:26.347
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.101 (0.101) seconds
+Test Suite 'PresenceTests' started at 2026-09-10 05:45:26.347
+Test Case 'PresenceTests.testReappearanceResetsCounter' started at 2026-09-10 05:45:26.347
+Test Case 'PresenceTests.testReappearanceResetsCounter' passed (0.001 seconds)
+Test Case 'PresenceTests.testTransientFailureDoesNotMeanClosed' started at 2026-09-10 05:45:26.348
+Test Case 'PresenceTests.testTransientFailureDoesNotMeanClosed' passed (0.0 seconds)
+Test Case 'PresenceTests.testTwoConfirmedAbsencesRemoveWindow' started at 2026-09-10 05:45:26.348
+Test Case 'PresenceTests.testTwoConfirmedAbsencesRemoveWindow' passed (0.0 seconds)
+Test Suite 'PresenceTests' passed at 2026-09-10 05:45:26.348
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'debug.xctest' passed at 2026-09-10 05:45:26.348
+	 Executed 34 tests, with 0 failures (0 unexpected) in 0.308 (0.308) seconds
+Test Suite 'All tests' passed at 2026-09-10 05:45:26.348
+	 Executed 34 tests, with 0 failures (0 unexpected) in 0.308 (0.308) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.2.1 (c9d57c83568b06d)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
