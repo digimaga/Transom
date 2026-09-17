@@ -5,8 +5,8 @@ cd "$ROOT"
 for script in scripts/*.sh; do bash -n "$script"; done
 python3 scripts/check-source.py
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  xcrun swift build --product WindowBar
-  xcrun swift build --product WindowBarLab
+  xcrun swift build --product Transom
+  xcrun swift build --product TransomLab
   # Tests use Swift Testing (Command Line Tools ship Testing.framework but no XCTest).
   # Without Xcode, the default build system does not pass the Testing macro plugin path
   # to the frontend, so it is given explicitly when the plugin directory exists.
@@ -17,6 +17,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   echo "macOS build and unit tests completed. GUI/AX/WindowServer still require manual tests."
 else
   swift test
-  while IFS= read -r source; do swiftc -frontend -parse "$source"; done < <(find Sources/WindowBarApp Sources/WindowBarLab -name '*.swift' -print)
+  while IFS= read -r source; do swiftc -frontend -parse "$source"; done < <(find Sources/TransomApp Sources/TransomLab -name '*.swift' -print)
   echo "Linux validation: Core unit tests and Swift syntax only. NO macOS type-check/link/GUI test."
 fi

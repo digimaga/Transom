@@ -1,6 +1,6 @@
 import Foundation
 import ApplicationServices
-import WindowBarCore
+import TransomCore
 
 /// Queue-confined references. Never exported to the UI or serialized.
 struct AXPathStep {
@@ -64,18 +64,18 @@ extension AXAppWorker {
         if let reason {
             // Reason code only; never the title, document or selection itself.
             AXAppWorker.focusLogger.info("メニュー文脈の再照合に失敗しました。理由コード: \(reason, privacy: .public)")
-            throw WindowBarError.stale
+            throw TransomError.stale
         }
     }
     func prepareMenu(for target: WindowToken, headings requested: [MenuHeading],
                      permit: OperationPermit, completion: @escaping @MainActor (Result<PreparedMenu, Error>) -> Void) {
         submit({ worker in
-            guard permit.isValid(), !requested.isEmpty else { throw WindowBarError.cancelled }
+            guard permit.isValid(), !requested.isEmpty else { throw TransomError.cancelled }
             let witness = try worker.witness(target)
             let session = AXMenuSession(target: target, witness: witness, permit: permit)
             let reader = AXMenuReader(application: worker.application, session: session)
             let entries = try reader.read(headings: requested)
-            guard permit.isValid() else { throw WindowBarError.cancelled }
+            guard permit.isValid() else { throw TransomError.cancelled }
             // Focus/document state may have changed while the tree was being fetched.
             try worker.validateWitness(session)
             worker.menus[session.id] = session
@@ -89,34 +89,34 @@ extension AXAppWorker {
     func execute(sessionID: UUID, commandID: UUID, completion: @escaping @MainActor (Result<Void, Error>) -> Void) {
         submit({ worker in
             guard let session = worker.menus[sessionID], session.permit.isValid(),
-                  let command = session.commands[commandID] else { throw WindowBarError.stale }
+                  let command = session.commands[commandID] else { throw TransomError.stale }
             defer { worker.menus.removeValue(forKey: sessionID) }
             try worker.validateWitness(session)
             let budget = AXBudget(seconds: 1.4)
             guard let currentRoot = AX.element(try AX.value(worker.application, kAXMenuBarAttribute, budget: budget)),
-                  CFEqual(command.root, currentRoot) else { throw WindowBarError.stale }
+                  CFEqual(command.root, currentRoot) else { throw TransomError.stale }
             var current = currentRoot
             for step in command.path {
                 let children = try AX.children(current, budget: budget)
-                guard children.indices.contains(step.index) else { throw WindowBarError.stale }
+                guard children.indices.contains(step.index) else { throw TransomError.stale }
                 current = children[step.index]
                 // Strict reference AND signature equality. Never search for a similarly named item.
                 guard CFEqual(current, step.element),
                       try AX.string(current, kAXRoleAttribute, budget: budget) == step.role,
                       (try AX.string(current, kAXTitleAttribute, budget: budget) ?? "") == step.title else {
-                    throw WindowBarError.stale
+                    throw TransomError.stale
                 }
             }
             guard CFEqual(current, command.element),
                   try AX.bool(current, kAXEnabledAttribute, budget: budget) == true,
-                  try AX.actions(current, budget: budget).contains(kAXPressAction) else { throw WindowBarError.stale }
+                  try AX.actions(current, budget: budget).contains(kAXPressAction) else { throw TransomError.stale }
             try worker.validateWitness(session)
             // Last check immediately before dispatch. Cross-process UI actions cannot be atomic.
-            guard worker.lifetime.isValid(), session.permit.commitOnce() else { throw WindowBarError.cancelled }
+            guard worker.lifetime.isValid(), session.permit.commitOnce() else { throw TransomError.cancelled }
             AX.configure(current)
             let result = AXUIElementPerformAction(current, kAXPressAction as CFString)
-            if result == .cannotComplete { throw WindowBarError.actionUncertain }
-            guard result == .success else { throw WindowBarError.ax(result.rawValue) }
+            if result == .cannotComplete { throw TransomError.actionUncertain }
+            guard result == .success else { throw TransomError.ax(result.rawValue) }
             // Success means the AX request was accepted, not that a save operation finished.
         }, completion: completion)
     }
@@ -133,7 +133,7 @@ private final class AXMenuReader {
 
     func read(headings: [MenuHeading]) throws -> [MenuEntry] {
         guard let root = AX.element(try AX.value(application, kAXMenuBarAttribute, budget: budget)) else {
-            throw WindowBarError.unavailable("このアプリはメニュー情報を公開していません。")
+            throw TransomError.unavailable("このアプリはメニュー情報を公開していません。")
         }
         self.root = root
         let tops = try AX.children(root, budget: budget)
@@ -141,12 +141,12 @@ private final class AXMenuReader {
         for heading in headings {
             guard tops.indices.contains(heading.index) else {
                 AXAppWorker.focusLogger.info("メニュー見出しの照合に失敗しました。理由コード: heading-index")
-                throw WindowBarError.stale
+                throw TransomError.stale
             }
             let top = tops[heading.index]
             guard try AX.string(top, kAXTitleAttribute, budget: budget) == heading.title else {
                 AXAppWorker.focusLogger.info("メニュー見出しの照合に失敗しました。理由コード: heading-title")
-                throw WindowBarError.stale
+                throw TransomError.stale
             }
             let role = try AX.string(top, kAXRoleAttribute, budget: budget) ?? ""
             let step = AXPathStep(index: heading.index, element: top, role: role, title: heading.title)

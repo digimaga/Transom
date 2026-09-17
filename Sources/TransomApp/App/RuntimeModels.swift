@@ -1,5 +1,5 @@
 import AppKit
-import WindowBarCore
+import TransomCore
 
 struct ApplicationDescriptor {
     let instance: UUID
@@ -31,7 +31,7 @@ struct ApplicationScan {
     let complete: Bool
 }
 
-enum WindowBarError: LocalizedError {
+enum TransomError: LocalizedError {
     case ax(Int32)
     case unavailable(String)
     case stale

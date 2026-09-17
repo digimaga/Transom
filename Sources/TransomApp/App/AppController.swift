@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 import OSLog
-import WindowBarCore
+import TransomCore
 
 @MainActor
 private final class WorkerState {
@@ -21,7 +21,7 @@ final class AppController: NSObject {
     private let menus = MenuCoordinator()
     private let drag = DragCoordinator()
     private let tracker = FrameTracker()
-    private let logger = Logger(subsystem: "dev.local.WindowBar", category: "runtime")
+    private let logger = Logger(subsystem: "dev.local.Transom", category: "runtime")
     private var workers: [Int32: WorkerState] = [:]
     private var panels: [WindowToken: HeaderPanel] = [:]
     private var metadata: ServerSnapshot?
@@ -468,10 +468,10 @@ final class AppController: NSObject {
     }
     private func createStatusMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "WB"
+        statusItem.button?.title = "TR"
         let menu = NSMenu()
         menu.autoenablesItems = false
-        statusLine = NSMenuItem(title: "WindowBar", action: nil, keyEquivalent: "")
+        statusLine = NSMenuItem(title: "Transom", action: nil, keyEquivalent: "")
         statusLine.isEnabled = false
         menu.addItem(statusLine)
         menu.addItem(.separator())
@@ -488,7 +488,7 @@ final class AppController: NSObject {
         _ = item("アクセシビリティ設定を開く", #selector(openAccessibilitySettings))
         _ = item("診断情報をコピー（文書名を含まない）", #selector(copyDiagnostics))
         menu.addItem(.separator())
-        _ = item("WindowBarを終了", #selector(quit))
+        _ = item("Transomを終了", #selector(quit))
         statusItem.menu = menu
     }
     private func status(_ message: String) {
@@ -502,7 +502,7 @@ final class AppController: NSObject {
         let visible = panels.values.filter { $0.isVisible && $0.alphaValue > 0.9 }.count
         let tracked = workers.values.reduce(0) { $0 + $1.snapshots.filter(\.eligible).count }
         let state = !enabled ? "停止中" : !trusted ? "権限待ち" : !server.exactIdentity ? "ID取得非対応" : "\(visible)/\(tracked) 枚表示"
-        statusLine.title = "WindowBar 0.1 — \(state)"
+        statusLine.title = "Transom 0.1 — \(state)"
         statusItem.button?.toolTip = "\(state)\n\(lastMessage)"
     }
     @objc private func toggle() {
@@ -515,7 +515,7 @@ final class AppController: NSObject {
     @objc private func requestPermission() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         trusted = AXIsProcessTrustedWithOptions(options)
-        status(trusted ? "アクセシビリティは許可されています。" : "システム設定でWindowBarのアクセシビリティを許可してください。")
+        status(trusted ? "アクセシビリティは許可されています。" : "システム設定でTransomのアクセシビリティを許可してください。")
     }
     @objc private func openAccessibilitySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }

@@ -12,11 +12,11 @@ jobs:
       - name: Bundle local development app
         run: bash scripts/build-app.sh --debug
       - name: Preserve macOS app file modes
-        run: ditto -c -k --sequesterRsrc --keepParent dist/WindowBar.app dist/WindowBar-dev.app.zip
+        run: ditto -c -k --sequesterRsrc --keepParent dist/Transom.app dist/Transom-dev.app.zip
       - name: Upload development app
         uses: actions/upload-artifact@v4
         with:
-          name: WindowBar-local-dev
-          path: dist/WindowBar-dev.app.zip
+          name: Transom-local-dev
+          path: dist/Transom-dev.app.zip
 # This workflow has not been executed by the authoring environment.
 # CI compilation does NOT exercise live Accessibility, Spaces, focus or WindowServer.

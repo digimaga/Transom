@@ -1,5 +1,5 @@
 import AppKit
-import WindowBarCore
+import TransomCore
 
 @MainActor
 private final class MenuSelection: NSObject {
@@ -104,7 +104,7 @@ final class MenuCoordinator {
                 item.action = #selector(MenuSelection.choose(_:))
                 item.representedObject = id
             }
-            // Never bind the source shortcut to WindowBar's own responder chain.
+            // Never bind the source shortcut to Transom's own responder chain.
             menu.addItem(item)
         }
         return menu

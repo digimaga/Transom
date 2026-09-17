@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import WindowBarCore
+@testable import TransomCore
 
 // Swift Testing (not XCTest): Command Line Tools without Xcode ship Testing.framework but no XCTest.
 // Test names and assertions are kept identical to the original XCTest suite (34 cases).

@@ -1,13 +1,13 @@
 import Foundation
 import ApplicationServices
-import WindowBarBridge
-import WindowBarCore
+import TransomBridge
+import TransomCore
 
 final class AXBudget {
     let deadline: TimeInterval
     init(seconds: TimeInterval) { deadline = ProcessInfo.processInfo.systemUptime + seconds }
     func check() throws {
-        if ProcessInfo.processInfo.systemUptime > deadline { throw WindowBarError.deadline }
+        if ProcessInfo.processInfo.systemUptime > deadline { throw TransomError.deadline }
     }
 }
 
@@ -23,7 +23,7 @@ enum AX {
         switch error {
         case .success: return result
         case .attributeUnsupported, .noValue: return nil
-        default: throw WindowBarError.ax(error.rawValue)
+        default: throw TransomError.ax(error.rawValue)
         }
     }
     static func string(_ element: AXUIElement, _ name: String, budget: AXBudget? = nil) throws -> String? {
@@ -55,7 +55,7 @@ enum AX {
         configure(element)
         var id: UInt32 = 0
         let error = WBCopyAXWindowID(element, &id)
-        guard error == .success, id != 0 else { throw WindowBarError.unavailable("正確なウィンドウIDを取得できません。") }
+        guard error == .success, id != 0 else { throw TransomError.unavailable("正確なウィンドウIDを取得できません。") }
         return id
     }
     static func point(_ value: CFTypeRef?) -> CGPoint? {
@@ -74,7 +74,7 @@ enum AX {
     }
     static func frame(_ element: AXUIElement) throws -> Rect {
         guard let p = point(try value(element, kAXPositionAttribute)),
-              let s = size(try value(element, kAXSizeAttribute)) else { throw WindowBarError.stale }
+              let s = size(try value(element, kAXSizeAttribute)) else { throw TransomError.stale }
         return Rect(x: Double(p.x), y: Double(p.y), width: Double(s.width), height: Double(s.height))
     }
     static func settable(_ element: AXUIElement, _ name: String) -> Bool {
@@ -85,16 +85,16 @@ enum AX {
     static func set(_ element: AXUIElement, _ name: String, _ value: CFTypeRef) throws {
         configure(element)
         let error = AXUIElementSetAttributeValue(element, name as CFString, value)
-        guard error == .success else { throw WindowBarError.ax(error.rawValue) }
+        guard error == .success else { throw TransomError.ax(error.rawValue) }
     }
     static func setPosition(_ element: AXUIElement, _ p: Point) throws {
         var p = CGPoint(x: p.x, y: p.y)
-        guard let value = AXValueCreate(.cgPoint, &p) else { throw WindowBarError.stale }
+        guard let value = AXValueCreate(.cgPoint, &p) else { throw TransomError.stale }
         try set(element, kAXPositionAttribute, value)
     }
     static func setSize(_ element: AXUIElement, _ rect: Rect) throws {
         var size = CGSize(width: rect.width, height: rect.height)
-        guard let value = AXValueCreate(.cgSize, &size) else { throw WindowBarError.stale }
+        guard let value = AXValueCreate(.cgSize, &size) else { throw TransomError.stale }
         try set(element, kAXSizeAttribute, value)
     }
     static func actions(_ element: AXUIElement, budget: AXBudget? = nil) throws -> [String] {
@@ -102,7 +102,7 @@ enum AX {
         configure(element)
         var raw: CFArray?
         let error = AXUIElementCopyActionNames(element, &raw)
-        guard error == .success else { throw WindowBarError.ax(error.rawValue) }
+        guard error == .success else { throw TransomError.ax(error.rawValue) }
         return raw as? [String] ?? []
     }
     static func equal(_ a: CFTypeRef?, _ b: CFTypeRef?) -> Bool {
@@ -125,7 +125,7 @@ enum AX {
         var raw: CFArray?
         let error = AXUIElementCopyMultipleAttributeValues(element, attributes as CFArray, [], &raw)
         guard error == .success, let values = raw as? [AnyObject], values.count == attributes.count else {
-            throw WindowBarError.ax(error.rawValue)
+            throw TransomError.ax(error.rawValue)
         }
         return Dictionary(uniqueKeysWithValues: zip(attributes, values))
     }

@@ -8,13 +8,13 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 2
 fi
 CONFIG=debug
-PRODUCT=WindowBar
+PRODUCT=Transom
 PLIST=Resources/Info.plist
 for argument in "$@"; do
   case "$argument" in
     --release) CONFIG=release ;;
     --debug) CONFIG=debug ;;
-    --lab) PRODUCT=WindowBarLab; PLIST=Resources/LabInfo.plist ;;
+    --lab) PRODUCT=TransomLab; PLIST=Resources/LabInfo.plist ;;
     *) echo "Usage: bash scripts/build-app.sh [--debug|--release] [--lab]" >&2; exit 2 ;;
   esac
 done

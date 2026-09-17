@@ -1,5 +1,5 @@
-#ifndef WINDOWBAR_BRIDGE_H
-#define WINDOWBAR_BRIDGE_H
+#ifndef TRANSOM_BRIDGE_H
+#define TRANSOM_BRIDGE_H
 #include <ApplicationServices/ApplicationServices.h>
 #include <stdbool.h>
 #include <stdint.h>

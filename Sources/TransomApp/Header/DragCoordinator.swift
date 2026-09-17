@@ -1,6 +1,6 @@
 import AppKit
 import OSLog
-import WindowBarCore
+import TransomCore
 
 @MainActor
 final class DragCoordinator {
@@ -20,7 +20,7 @@ final class DragCoordinator {
             self.token = token; self.worker = worker; self.origin = origin; initialMouse = mouse
         }
     }
-    private static let logger = Logger(subsystem: "dev.local.WindowBar", category: "drag")
+    private static let logger = Logger(subsystem: "dev.local.Transom", category: "drag")
     var onStatus: ((String) -> Void)?
     /// The target was raised and focus-validated; move steps start now.
     var onReady: ((WindowToken) -> Void)?

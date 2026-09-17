@@ -19,7 +19,7 @@
   https://github.com/FelixKratz/JankyBorders
   https://raw.githubusercontent.com/FelixKratz/JankyBorders/main/src/misc/extern.h
   https://raw.githubusercontent.com/FelixKratz/JankyBorders/main/src/border.c
-  WindowBarBridgeの任意のSkyLight関数について、関数名・ABI宣言を確認する際に参照した。非公開関数の存在と宣言はAppleの互換性保証ではない。
+  TransomBridgeの任意のSkyLight関数について、関数名・ABI宣言を確認する際に参照した。非公開関数の存在と宣言はAppleの互換性保証ではない。
 - Hammerspoon：AXのメニューツリー、チェック状態・ショートカット属性、AXPressによる実行の例。
   https://raw.githubusercontent.com/Hammerspoon/hammerspoon/master/extensions/application/libapplication.m
 - Menuwhere：独自のメニュー表示と選択・フォーカスに依存した項目の有効状態の干渉が、実用品でも課題になった例。

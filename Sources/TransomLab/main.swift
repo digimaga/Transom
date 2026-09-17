@@ -1,13 +1,13 @@
 import AppKit
 
-/// Separate development fixture. Not linked into WindowBar and not built by default.
+/// Separate development fixture. Not linked into Transom and not built by default.
 @MainActor
 final class LabDelegate: NSObject, NSApplicationDelegate {
     private var windows: [NSWindow] = []
     private var editors: [Int: NSTextView] = [:]
     private var names: [Int: String] = [:]
     private let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("WindowBarLab", isDirectory: true)
+        .appendingPathComponent("TransomLab", isDirectory: true)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         makeMenus()
@@ -27,7 +27,7 @@ final class LabDelegate: NSObject, NSApplicationDelegate {
             text.textContainer?.widthTracksTextView = true
             text.allowsUndo = true
             text.font = .monospacedSystemFont(ofSize: 16, weight: .regular)
-            text.string = "Window \(name)\n\nこのウィンドウは \(name) です。\nこの行を選択し、外付けの「編集 → コピー」を試してください。\n\n「ファイル → 検証保存」で、このウィンドウだけを\nApplication Support/WindowBarLab/\(name).txt に保存します。"
+            text.string = "Window \(name)\n\nこのウィンドウは \(name) です。\nこの行を選択し、外付けの「編集 → コピー」を試してください。\n\n「ファイル → 検証保存」で、このウィンドウだけを\nApplication Support/TransomLab/\(name).txt に保存します。"
             scroll.documentView = text
             window.contentView = scroll
             window.makeKeyAndOrderFront(nil)
@@ -41,7 +41,7 @@ final class LabDelegate: NSObject, NSApplicationDelegate {
     private func makeMenus() {
         let main = NSMenu()
         let app = NSMenu()
-        app.addItem(withTitle: "WindowBarLabを終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        app.addItem(withTitle: "TransomLabを終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appRoot = NSMenuItem(); appRoot.submenu = app; main.addItem(appRoot)
         let file = NSMenu(title: "ファイル")
         let save = NSMenuItem(title: "検証保存", action: #selector(saveFixture(_:)), keyEquivalent: "s")

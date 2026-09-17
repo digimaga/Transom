@@ -1,5 +1,5 @@
 import AppKit
-import WindowBarCore
+import TransomCore
 
 /// Reads the on-screen bounds of a few known windows several times per display frame (metadata only: no
 /// pixels, no kCGWindowName). It runs only while a mouse button is held or a header drag is active, so a

@@ -1,5 +1,5 @@
 import AppKit
-import WindowBarCore
+import TransomCore
 
 final class HeaderPanel: NSPanel {
     let token: WindowToken
@@ -36,7 +36,7 @@ final class HeaderPanel: NSPanel {
         level = .normal
         contentView = headerView
         conceal()
-        setAccessibilityLabel("WindowBar 外付けタイトルバー")
+        setAccessibilityLabel("Transom 外付けタイトルバー")
     }
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }

@@ -1,28 +1,28 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-var products: [Product] = [.library(name: "WindowBarCore", targets: ["WindowBarCore"])]
+var products: [Product] = [.library(name: "TransomCore", targets: ["TransomCore"])]
 var targets: [Target] = [
-    .target(name: "WindowBarCore"),
-    .testTarget(name: "WindowBarCoreTests", dependencies: ["WindowBarCore"])
+    .target(name: "TransomCore"),
+    .testTarget(name: "TransomCoreTests", dependencies: ["TransomCore"])
 ]
 #if os(macOS)
 products += [
-    .executable(name: "WindowBar", targets: ["WindowBarApp"]),
-    .executable(name: "WindowBarLab", targets: ["WindowBarLab"])
+    .executable(name: "Transom", targets: ["TransomApp"]),
+    .executable(name: "TransomLab", targets: ["TransomLab"])
 ]
 targets += [
-    .target(name: "WindowBarBridge", publicHeadersPath: "include", linkerSettings: [
+    .target(name: "TransomBridge", publicHeadersPath: "include", linkerSettings: [
         .linkedFramework("ApplicationServices"), .linkedFramework("CoreGraphics")
     ]),
-    .executableTarget(name: "WindowBarApp", dependencies: ["WindowBarCore", "WindowBarBridge"],
+    .executableTarget(name: "TransomApp", dependencies: ["TransomCore", "TransomBridge"],
         linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("ApplicationServices")]),
-    .executableTarget(name: "WindowBarLab", linkerSettings: [.linkedFramework("AppKit")])
+    .executableTarget(name: "TransomLab", linkerSettings: [.linkedFramework("AppKit")])
 ]
 #endif
 
 let package = Package(
-    name: "WindowBar",
+    name: "Transom",
     platforms: [.macOS(.v14)],
     products: products,
     targets: targets,

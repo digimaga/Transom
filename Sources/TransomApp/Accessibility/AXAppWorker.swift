@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import ApplicationServices
 import OSLog
-import WindowBarCore
+import TransomCore
 
 /// Owns every AXUIElement and menu command reference for one process instance.
 /// Only value snapshots cross to the main queue. Never execute synchronous AX IPC in AppKit callbacks.
@@ -26,7 +26,7 @@ final class AXAppWorker {
 
     init(descriptor: ApplicationDescriptor) {
         self.descriptor = descriptor
-        queue = DispatchQueue(label: "WindowBar.AX.\(descriptor.pid).\(descriptor.instance.uuidString)", qos: .userInitiated)
+        queue = DispatchQueue(label: "Transom.AX.\(descriptor.pid).\(descriptor.instance.uuidString)", qos: .userInitiated)
         application = AXUIElementCreateApplication(descriptor.pid)
     }
     func stop() { lifetime.cancel() }
@@ -34,7 +34,7 @@ final class AXAppWorker {
     func submit<T>(_ body: @escaping (AXAppWorker) throws -> T, completion: @escaping @MainActor (Result<T, Error>) -> Void) {
         queue.async {
             let result = Result { () throws -> T in
-                guard self.lifetime.isValid() else { throw WindowBarError.cancelled }
+                guard self.lifetime.isValid() else { throw TransomError.cancelled }
                 return try body(self)
             }
             MainRunLoop.perform { completion(result) } // not DispatchQueue.main: must run during NSMenu tracking
@@ -75,7 +75,7 @@ final class AXAppWorker {
         // A successful list read is distinguished from unavailable/timeout, including an empty list.
         guard let raw = try AX.value(application, kAXWindowsAttribute, budget: budget),
               CFGetTypeID(raw) == CFArrayGetTypeID() else {
-            throw WindowBarError.unavailable("ウィンドウ一覧を読み取れません。")
+            throw TransomError.unavailable("ウィンドウ一覧を読み取れません。")
         }
         let elements = AX.elements(raw)
         let focused = try? AX.element(AX.value(application, kAXFocusedWindowAttribute, budget: budget))
@@ -154,12 +154,12 @@ final class AXAppWorker {
     func exactRecord(_ token: WindowToken) throws -> Record {
         guard lifetime.isValid(), token.processInstance == descriptor.instance,
               let record = records[token.windowID], record.token == token,
-              try AX.windowID(record.element) == token.windowID else { throw WindowBarError.stale }
+              try AX.windowID(record.element) == token.windowID else { throw TransomError.stale }
         return record
     }
     /// Diagnostics only: the last reason validateFocus failed (a fixed code, never a title/URL).
     private(set) var lastFocusMismatch = ""
-    static let focusLogger = Logger(subsystem: "dev.local.WindowBar", category: "focus")
+    static let focusLogger = Logger(subsystem: "dev.local.Transom", category: "focus")
 
     /// Frontmost process as seen by the system-wide AX element. Chromium/Electron apps (e.g. Claude, Chrome)
     /// can leave AXFocusedApplication unanswered (nil) while frontmost; ONLY in that no-answer case the
@@ -186,8 +186,8 @@ final class AXAppWorker {
             else if try AX.bool(record.element, "AXModal") == true { reason = "modal" }
             else if try AX.hasSheet(record.element) { reason = "sheets" }
             else { reason = nil }
-            if let reason { lastFocusMismatch = reason; throw WindowBarError.focusMismatch }
-        } catch let error as WindowBarError {
+            if let reason { lastFocusMismatch = reason; throw TransomError.focusMismatch }
+        } catch let error as TransomError {
             if case .ax(let code) = error { lastFocusMismatch = "ax-error(\(code))" }
             throw error
         }
@@ -199,7 +199,7 @@ final class AXAppWorker {
     func focus(_ token: WindowToken, permit: OperationPermit,
                completion: @escaping @MainActor (Result<Void, Error>) -> Void) {
         submit({ worker in
-            guard permit.isValid() else { throw WindowBarError.cancelled }
+            guard permit.isValid() else { throw TransomError.cancelled }
             let record = try worker.exactRecord(token)
             AX.configure(record.element)
             // AX IPC only on this per-app worker queue, never on MainActor.
@@ -208,19 +208,19 @@ final class AXAppWorker {
                 try? AX.set(worker.application, kAXFrontmostAttribute, kCFBooleanTrue as CFTypeRef)
             }
             let error = AXUIElementPerformAction(record.element, kAXRaiseAction as CFString)
-            guard error == .success else { throw WindowBarError.ax(error.rawValue) }
+            guard error == .success else { throw TransomError.ax(error.rawValue) }
             if AX.settable(worker.application, kAXFocusedWindowAttribute) {
                 try AX.set(worker.application, kAXFocusedWindowAttribute, record.element)
             }
             let deadline = ProcessInfo.processInfo.systemUptime + 0.6
             repeat {
-                guard permit.isValid(), worker.lifetime.isValid() else { throw WindowBarError.cancelled }
+                guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
                 if (try? worker.validateFocus(token)) != nil { return }
                 Thread.sleep(forTimeInterval: 0.025) // worker only; bounded, no MainActor blocking
             } while ProcessInfo.processInfo.systemUptime < deadline
             // Reason code only (frontmost-pid / focused-window / subrole / ax-error(n) ...). No titles or URLs.
             AXAppWorker.focusLogger.info("フォーカス検証が0.6秒以内に通りませんでした。最終理由コード: \(worker.lastFocusMismatch, privacy: .public)")
-            throw WindowBarError.focusMismatch
+            throw TransomError.focusMismatch
         }, completion: completion)
     }
     /// Between thorough checks of one drag: the exact window ID and that the window is still its
@@ -232,7 +232,7 @@ final class AXAppWorker {
         let focused = AX.element(try AX.value(application, kAXFocusedWindowAttribute))
         guard let focused, CFEqual(focused, record.element) else {
             lastFocusMismatch = "focused-window"
-            throw WindowBarError.focusMismatch
+            throw TransomError.focusMismatch
         }
         return record
     }
@@ -247,9 +247,9 @@ final class AXAppWorker {
             let started = ProcessInfo.processInfo.systemUptime
             let record = thorough ? try worker.validateFocus(token) : try worker.validateDragTarget(token)
             guard permit.isValid(), worker.lifetime.isValid(), point.x.isFinite, point.y.isFinite else {
-                throw WindowBarError.cancelled
+                throw TransomError.cancelled
             }
-            if thorough, !AX.settable(record.element, kAXPositionAttribute) { throw WindowBarError.cancelled }
+            if thorough, !AX.settable(record.element, kAXPositionAttribute) { throw TransomError.cancelled }
             let validated = ProcessInfo.processInfo.systemUptime
             try AX.setPosition(record.element, point)
             let actual = try AX.frame(record.element)
@@ -271,19 +271,19 @@ final class AXAppWorker {
             guard try AX.string(record.element, kAXRoleAttribute, budget: budget) == kAXWindowRole,
                   try AX.string(record.element, kAXSubroleAttribute, budget: budget) == kAXStandardWindowSubrole,
                   try AX.bool(record.element, "AXModal", budget: budget) != true,
-                  try !AX.hasSheet(record.element, budget: budget) else { throw WindowBarError.focusMismatch }
+                  try !AX.hasSheet(record.element, budget: budget) else { throw TransomError.focusMismatch }
             guard let button = AX.element(try AX.value(record.element, attribute, budget: budget)),
                   try AX.actions(button, budget: budget).contains(kAXPressAction) else {
-                throw WindowBarError.unavailable("このウィンドウにはそのボタンがありません。")
+                throw TransomError.unavailable("このウィンドウにはそのボタンがありません。")
             }
             guard try AX.bool(button, kAXEnabledAttribute, budget: budget) != false else {
-                throw WindowBarError.unavailable("このウィンドウではそのボタンが無効です。")
+                throw TransomError.unavailable("このウィンドウではそのボタンが無効です。")
             }
-            guard permit.isValid(), worker.lifetime.isValid(), permit.commitOnce() else { throw WindowBarError.cancelled }
+            guard permit.isValid(), worker.lifetime.isValid(), permit.commitOnce() else { throw TransomError.cancelled }
             AX.configure(button)
             let result = AXUIElementPerformAction(button, kAXPressAction as CFString)
-            if result == .cannotComplete { throw WindowBarError.actionUncertain }
-            guard result == .success else { throw WindowBarError.ax(result.rawValue) }
+            if result == .cannotComplete { throw TransomError.actionUncertain }
+            guard result == .success else { throw TransomError.ax(result.rawValue) }
         }, completion: completion)
     }
     func reserve(_ token: WindowToken, expected: Rect, desired: Rect, permit: OperationPermit,
@@ -292,10 +292,10 @@ final class AXAppWorker {
             let record = try worker.validateFocus(token)
             guard permit.isValid(), worker.lifetime.isValid(), desired.isValid,
                   try AX.frame(record.element).approximatelyEquals(expected, tolerance: 2),
-                  AX.settable(record.element, kAXPositionAttribute) else { throw WindowBarError.stale }
+                  AX.settable(record.element, kAXPositionAttribute) else { throw TransomError.stale }
             let sizeChanges = abs(expected.height - desired.height) > 0.5 || abs(expected.width - desired.width) > 0.5
             if sizeChanges, !AX.settable(record.element, kAXSizeAttribute) {
-                throw WindowBarError.unavailable("このウィンドウはサイズを変更できません。")
+                throw TransomError.unavailable("このウィンドウはサイズを変更できません。")
             }
             // Position + size is not atomic. Do not silently rollback over later user changes.
             // AppKit keeps a window inside its screen at each step, so the order matters: when growing
@@ -304,14 +304,14 @@ final class AXAppWorker {
             let grows = desired.width > expected.width + 0.5 || desired.height > expected.height + 0.5
             if grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
             if sizeChanges {
-                guard permit.isValid(), worker.lifetime.isValid() else { throw WindowBarError.cancelled }
+                guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
                 try AX.setSize(record.element, desired)
             }
-            guard permit.isValid(), worker.lifetime.isValid() else { throw WindowBarError.cancelled }
+            guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
             if !grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
             let actual = try AX.frame(record.element)
             guard actual.approximatelyEquals(desired, tolerance: 2) else {
-                throw WindowBarError.unavailable("アプリが配置を補正しました。実際の配置を確認してください。")
+                throw TransomError.unavailable("アプリが配置を補正しました。実際の配置を確認してください。")
             }
             return actual
         }, completion: completion)

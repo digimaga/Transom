@@ -1,4 +1,4 @@
-# WindowBar 開発引き継ぎルール
+# Transom 開発引き継ぎルール
 
 ## ユーザーの要件
 Macの各通常ウィンドウの上に、Windows風の外付けタイトルバーと操作可能なアプリメニュー、右端にWindows風のウィンドウボタン（最小化・最大化・閉じる）を追加する（ボタンは2026-09-17にユーザーの要望で追加）。Mac本来のメニューバー、ウィンドウボタン、ツールバーは残す。他の便利機能を増やす依頼ではない。
@@ -14,7 +14,7 @@ README.md、docs/HANDOFF.md、docs/REVIEW.md、docs/VALIDATION.md、docs/ACCEPTA
 4. 保存、削除、終了等を含むAXPressは、成功・失敗・応答不明を問わず自動再試行しない。OperationPermitを通す。
 5. AXUIElementはアプリごとのシリアルキューに閉じ込める。同期AX問い合わせをMainActorに追加しない。単なるTask.cancelでIPCが取り消せると考えない。
 6. PID/window IDには再利用がある。processInstanceとincarnationを捨てない。AXの一時的エラーを全窓の終了として扱わない。
-7. 非公開APIはWindowBarBridgeに限定。SIP解除、注入、画面録画や入力監視の権限追加を当然の解決策にしない。
+7. 非公開APIはTransomBridgeに限定。SIP解除、注入、画面録画や入力監視の権限追加を当然の解決策にしない。
 8. 生のウィンドウタイトル、文書URL、メニューラベル、選択文字列をログ・テレメトリーへ出さない。
 
 ## 実装の実際

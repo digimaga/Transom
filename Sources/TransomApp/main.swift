@@ -1,5 +1,5 @@
 import AppKit
-import WindowBarBridge
+import TransomBridge
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {

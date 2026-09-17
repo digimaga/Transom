@@ -1,5 +1,5 @@
 import AppKit
-import WindowBarCore
+import TransomCore
 
 private final class ActionButton: NSButton {
     var invoke: (() -> Void)?

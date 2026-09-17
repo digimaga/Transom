@@ -2,8 +2,8 @@ import AppKit
 import CoreGraphics
 import OSLog
 import QuartzCore
-import WindowBarBridge
-import WindowBarCore
+import TransomBridge
+import TransomCore
 
 struct ServerWindow {
     let id: UInt32
@@ -57,7 +57,7 @@ final class WindowServer {
     private(set) var privateOrderFailures = 0
     /// Kept for the status report only: the private path is no longer called (see `order(_:behind:)`).
     private(set) var privateOrderingDisabled = false
-    private static let logger = Logger(subsystem: "dev.local.WindowBar", category: "metadata")
+    private static let logger = Logger(subsystem: "dev.local.Transom", category: "metadata")
 
     /// Front-to-back on-screen windows. `own`: this process's window numbers (the header panels) and pid.
     /// They keep their place in the ordering but are not described: their frames are known locally.
