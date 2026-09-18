@@ -47,6 +47,7 @@ final class HeaderView: NSView {
     private var focused = false
     private var accentColor: NSColor?
     private var fillWhenFocused = false
+    private var lineWidth = CGFloat(2)
     private var resolvedAccent: NSColor { accentColor ?? .controlAccentColor }
     /// The header strip occupies the top of the view; the rest is the backfill band that runs on behind
     /// the target window and shows only through its rounded corners.
@@ -130,10 +131,12 @@ final class HeaderView: NSView {
         refreshTextTint()
         needsDisplay = true
     }
-    /// nil keeps the system accent. fill paints the whole bar in that colour instead of the 2px top line.
-    func setAccent(_ color: NSColor?, fill: Bool) {
+    /// nil keeps the system accent. fill paints the whole bar in that colour instead of the top line,
+    /// whose thickness is lineWidth points (0 draws no line).
+    func setAccent(_ color: NSColor?, fill: Bool, lineWidth: CGFloat) {
         accentColor = color
         fillWhenFocused = fill
+        self.lineWidth = lineWidth
         refreshTextTint()
         needsDisplay = true
     }
@@ -184,9 +187,9 @@ final class HeaderView: NSView {
         }
         NSColor.windowBackgroundColor.setFill()
         bounds.fill()
-        if focused {
+        if focused && lineWidth > 0 {
             resolvedAccent.setFill()
-            NSRect(x: 0, y: 0, width: bounds.width, height: 2).fill()
+            NSRect(x: 0, y: 0, width: bounds.width, height: lineWidth).fill()
         }
     }
 }

@@ -55,10 +55,13 @@ final class AppController: NSObject {
     /// nil means the bar follows the system accent; a stored colour overrides it for the focused window.
     private var accentColor: NSColor?
     private var fillWhenFocused = false
+    /// Thickness of the accent line on the focused bar, 0–5 points; 0 draws no line.
+    private var lineWidth = 2
     private var appearanceItem: NSMenuItem?
     private var systemAccentItem: NSMenuItem!
     private var lineStyleItem: NSMenuItem!
     private var fillStyleItem: NSMenuItem!
+    private var lineWidthItems: [NSMenuItem] = []
     private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
     private var excluded: Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: "excludedBundleIDs") ?? [])
@@ -66,9 +69,10 @@ final class AppController: NSObject {
 
     func start() {
         precondition(Thread.isMainThread)
-        UserDefaults.standard.register(defaults: ["enabled": true, "activeBarFill": false])
+        UserDefaults.standard.register(defaults: ["enabled": true, "activeBarFill": false, "activeBarLineWidth": 2])
         enabled = UserDefaults.standard.bool(forKey: "enabled")
         fillWhenFocused = UserDefaults.standard.bool(forKey: "activeBarFill")
+        lineWidth = min(5, max(0, UserDefaults.standard.integer(forKey: "activeBarLineWidth")))
         if let data = UserDefaults.standard.data(forKey: "activeBarColor"),
            let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data) {
             accentColor = color
@@ -392,7 +396,7 @@ final class AppController: NSObject {
     }
     private func makePanel(_ token: WindowToken) -> HeaderPanel {
         let panel = HeaderPanel(token: token)
-        panel.headerView.setAccent(accentColor, fill: fillWhenFocused)
+        panel.headerView.setAccent(accentColor, fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
         panel.headerView.onMenu = { [weak self, weak panel] headings, anchor in
             guard let self, let panel else { return }
             self.drag.cancel()
@@ -515,6 +519,17 @@ final class AppController: NSObject {
         appearanceMenu.addItem(.separator())
         lineStyleItem = sub(NSLocalizedString("上端ライン", comment: "Menu item: mark the active bar with a thin top line"), #selector(useLineStyle))
         fillStyleItem = sub(NSLocalizedString("バー全体", comment: "Menu item: paint the whole active bar"), #selector(useFillStyle))
+        let thickness = NSMenuItem(title: NSLocalizedString("ラインの太さ", comment: "Menu: thickness of the active bar's top line"), action: nil, keyEquivalent: "")
+        let thicknessMenu = NSMenu()
+        thicknessMenu.autoenablesItems = false
+        for width in 0...5 {
+            let i = NSMenuItem(title: width == 0
+                ? NSLocalizedString("なし", comment: "Menu item: no top line on the active bar")
+                : "\(width)px", action: #selector(setLineWidth(_:)), keyEquivalent: "")
+            i.target = self; i.tag = width; thicknessMenu.addItem(i); lineWidthItems.append(i)
+        }
+        thickness.submenu = thicknessMenu
+        appearanceMenu.addItem(thickness)
         appearance.submenu = appearanceMenu
         menu.addItem(appearance)
         appearanceItem = appearance
@@ -557,8 +572,15 @@ final class AppController: NSObject {
         UserDefaults.standard.set(fill, forKey: "activeBarFill")
         applyAppearance()
     }
+    @objc private func setLineWidth(_ sender: NSMenuItem) {
+        lineWidth = sender.tag
+        UserDefaults.standard.set(lineWidth, forKey: "activeBarLineWidth")
+        applyAppearance()
+    }
     private func applyAppearance() {
-        for panel in panels.values { panel.headerView.setAccent(accentColor, fill: fillWhenFocused) }
+        for panel in panels.values {
+            panel.headerView.setAccent(accentColor, fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
+        }
         updateAppearanceMenu()
     }
     private func updateAppearanceMenu() {
@@ -566,6 +588,7 @@ final class AppController: NSObject {
         systemAccentItem.state = accentColor == nil ? .on : .off
         lineStyleItem.state = fillWhenFocused ? .off : .on
         fillStyleItem.state = fillWhenFocused ? .on : .off
+        for item in lineWidthItems { item.state = item.tag == lineWidth ? .on : .off }
         appearanceItem?.image = swatch(accentColor ?? .controlAccentColor)
     }
     private func swatch(_ color: NSColor) -> NSImage {

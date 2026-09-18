@@ -30,6 +30,8 @@
 "色を選択…" = "Choose Color…";
 "上端ライン" = "Top Line";
 "バー全体" = "Whole Bar";
+"ラインの太さ" = "Line Thickness";
+"なし" = "None";
 
 /* HeaderView.swift */
 "最小化" = "Minimize";
