@@ -55,7 +55,9 @@ enum AX {
         configure(element)
         var id: UInt32 = 0
         let error = WBCopyAXWindowID(element, &id)
-        guard error == .success, id != 0 else { throw TransomError.unavailable("正確なウィンドウIDを取得できません。") }
+        guard error == .success, id != 0 else {
+            throw TransomError.unavailable(NSLocalizedString("正確なウィンドウIDを取得できません。", comment: "Error: failed to get the exact window ID"))
+        }
         return id
     }
     static func point(_ value: CFTypeRef?) -> CGPoint? {

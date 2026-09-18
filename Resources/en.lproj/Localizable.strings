@@ -56,6 +56,9 @@
 "このウィンドウはサイズを変更できません。" = "This window's size can't be changed.";
 "アプリが配置を補正しました。実際の配置を確認してください。" = "The app adjusted the placement. Check its actual position.";
 
+/* AXUtilities.swift */
+"正確なウィンドウIDを取得できません。" = "Can't get the exact window ID.";
+
 /* AXMenuStore.swift */
 "このアプリはメニュー情報を公開していません。" = "This app doesn't expose menu information.";
 "未展開または非対応のメニューです。元のMacメニューを使用してください。" = "This menu is unexpanded or unsupported. Use the original Mac menu instead.";
