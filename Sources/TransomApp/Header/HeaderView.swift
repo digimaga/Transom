@@ -46,6 +46,7 @@ final class HeaderView: NSView {
     private var currentLayout: HeaderLayout?
     private var focused = false
     private var accentColor: NSColor?
+    private var baseColor: NSColor?
     private var fillWhenFocused = false
     private var lineWidth = CGFloat(2)
     private var resolvedAccent: NSColor { accentColor ?? .controlAccentColor }
@@ -131,20 +132,26 @@ final class HeaderView: NSView {
         refreshTextTint()
         needsDisplay = true
     }
-    /// nil keeps the system accent. fill paints the whole bar in that colour instead of the top line,
-    /// whose thickness is lineWidth points (0 draws no line).
-    func setAccent(_ color: NSColor?, fill: Bool, lineWidth: CGFloat) {
-        accentColor = color
+    /// accent nil keeps the system accent, base nil keeps the system window background. fill paints
+    /// the whole focused bar in the accent; otherwise a lineWidth-point line at the top marks it
+    /// (0 draws no line).
+    func setAppearance(accent: NSColor?, base: NSColor?, fill: Bool, lineWidth: CGFloat) {
+        accentColor = accent
+        baseColor = base
         fillWhenFocused = fill
         self.lineWidth = lineWidth
         refreshTextTint()
         needsDisplay = true
     }
-    /// Titles and glyphs need a readable colour only while the focused bar is fully painted;
-    /// everywhere else the regular label colour stays.
+    /// Titles and glyphs need a readable colour over a painted bar: the accent while the focused bar
+    /// is fully painted, a custom base colour at all times. Over the plain system background the
+    /// regular label colour stays.
     private func refreshTextTint() {
         let tinted = focused && fillWhenFocused
-        let text = tinted ? readableTextColor(on: resolvedAccent) : .labelColor
+        let text: NSColor
+        if tinted { text = readableTextColor(on: resolvedAccent) }
+        else if let baseColor { text = readableTextColor(on: baseColor) }
+        else { text = .labelColor }
         for button in [appButton, overflowButton] + menuButtons {
             button.attributedTitle = NSAttributedString(string: button.title, attributes:
                 [.font: button.font ?? .systemFont(ofSize: 12), .foregroundColor: text])
@@ -185,7 +192,7 @@ final class HeaderView: NSView {
             bounds.fill()
             return
         }
-        NSColor.windowBackgroundColor.setFill()
+        (baseColor ?? .windowBackgroundColor).setFill()
         bounds.fill()
         if focused && lineWidth > 0 {
             resolvedAccent.setFill()

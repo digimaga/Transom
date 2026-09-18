@@ -54,6 +54,8 @@ final class AppController: NSObject {
     private var lastFrontmostPID: Int32?
     /// nil means the bar follows the system accent; a stored colour overrides it for the focused window.
     private var accentColor: NSColor?
+    /// nil means the system window background; a stored colour recolours every bar.
+    private var baseColor: NSColor?
     private var fillWhenFocused = false
     /// Thickness of the accent line on the focused bar, 0–5 points; 0 draws no line.
     private var lineWidth = 2
@@ -62,6 +64,8 @@ final class AppController: NSObject {
     private var lineStyleItem: NSMenuItem!
     private var fillStyleItem: NSMenuItem!
     private var lineWidthItems: [NSMenuItem] = []
+    private var baseColorItem: NSMenuItem?
+    private var systemBaseItem: NSMenuItem!
     private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
     private var excluded: Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: "excludedBundleIDs") ?? [])
@@ -76,6 +80,10 @@ final class AppController: NSObject {
         if let data = UserDefaults.standard.data(forKey: "activeBarColor"),
            let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data) {
             accentColor = color
+        }
+        if let data = UserDefaults.standard.data(forKey: "barBaseColor"),
+           let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data) {
+            baseColor = color
         }
         createStatusMenu()
         menus.workerFor = { [weak self] token in self?.worker(for: token) }
@@ -396,7 +404,8 @@ final class AppController: NSObject {
     }
     private func makePanel(_ token: WindowToken) -> HeaderPanel {
         let panel = HeaderPanel(token: token)
-        panel.headerView.setAccent(accentColor, fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
+        panel.headerView.setAppearance(accent: accentColor, base: baseColor,
+                                       fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
         panel.headerView.onMenu = { [weak self, weak panel] headings, anchor in
             guard let self, let panel else { return }
             self.drag.cancel()
@@ -533,6 +542,18 @@ final class AppController: NSObject {
         appearance.submenu = appearanceMenu
         menu.addItem(appearance)
         appearanceItem = appearance
+        let base = NSMenuItem(title: NSLocalizedString("バーの色", comment: "Menu: base colour of every bar"), action: nil, keyEquivalent: "")
+        let baseMenu = NSMenu()
+        baseMenu.autoenablesItems = false
+        func baseSub(_ title: String, _ selector: Selector) -> NSMenuItem {
+            let i = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+            i.target = self; baseMenu.addItem(i); return i
+        }
+        systemBaseItem = baseSub(NSLocalizedString("システム標準に合わせる", comment: "Menu item: use the system window background for bars"), #selector(useSystemBase))
+        _ = baseSub(NSLocalizedString("色を選択…", comment: "Menu item: pick a custom colour for all bars"), #selector(chooseBaseColor))
+        base.submenu = baseMenu
+        menu.addItem(base)
+        baseColorItem = base
         menu.addItem(.separator())
         _ = item(NSLocalizedString("アクセシビリティの許可を確認", comment: "Menu item: check accessibility permission"), #selector(requestPermission))
         _ = item(NSLocalizedString("アクセシビリティ設定を開く", comment: "Menu item: open Accessibility settings"), #selector(openAccessibilitySettings))
@@ -577,9 +598,33 @@ final class AppController: NSObject {
         UserDefaults.standard.set(lineWidth, forKey: "activeBarLineWidth")
         applyAppearance()
     }
+    @objc private func useSystemBase() {
+        baseColor = nil
+        UserDefaults.standard.removeObject(forKey: "barBaseColor")
+        applyAppearance()
+    }
+    @objc private func chooseBaseColor() {
+        let panel = NSColorPanel.shared
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.setTarget(self)
+        panel.setAction(#selector(baseColorChanged(_:)))
+        panel.color = baseColor ?? .windowBackgroundColor
+        NSApp.activate()
+        panel.orderFront(nil)
+        panel.makeKey()
+    }
+    @objc private func baseColorChanged(_ sender: NSColorPanel) {
+        baseColor = sender.color
+        if let data = try? NSKeyedArchiver.archivedData(withRootObject: sender.color, requiringSecureCoding: true) {
+            UserDefaults.standard.set(data, forKey: "barBaseColor")
+        }
+        applyAppearance()
+    }
     private func applyAppearance() {
         for panel in panels.values {
-            panel.headerView.setAccent(accentColor, fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
+            panel.headerView.setAppearance(accent: accentColor, base: baseColor,
+                                           fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
         }
         updateAppearanceMenu()
     }
@@ -590,6 +635,8 @@ final class AppController: NSObject {
         fillStyleItem.state = fillWhenFocused ? .on : .off
         for item in lineWidthItems { item.state = item.tag == lineWidth ? .on : .off }
         appearanceItem?.image = swatch(accentColor ?? .controlAccentColor)
+        systemBaseItem.state = baseColor == nil ? .on : .off
+        baseColorItem?.image = swatch(baseColor ?? .windowBackgroundColor)
     }
     private func swatch(_ color: NSColor) -> NSImage {
         NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in

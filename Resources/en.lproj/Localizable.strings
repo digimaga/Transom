@@ -32,6 +32,8 @@
 "バー全体" = "Whole Bar";
 "ラインの太さ" = "Line Thickness";
 "なし" = "None";
+"バーの色" = "Bar Color";
+"システム標準に合わせる" = "Use System Default";
 
 /* HeaderView.swift */
 "最小化" = "Minimize";
