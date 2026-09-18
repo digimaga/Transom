@@ -45,6 +45,9 @@ final class HeaderView: NSView {
     private var headings: [MenuHeading] = []
     private var currentLayout: HeaderLayout?
     private var focused = false
+    private var accentColor: NSColor?
+    private var fillWhenFocused = false
+    private var resolvedAccent: NSColor { accentColor ?? .controlAccentColor }
     /// The header strip occupies the top of the view; the rest is the backfill band that runs on behind
     /// the target window and shows only through its rounded corners.
     private let stripHeight = CGFloat(Geometry.headerHeight)
@@ -124,7 +127,31 @@ final class HeaderView: NSView {
             }
         }
         needsLayout = true
+        refreshTextTint()
         needsDisplay = true
+    }
+    /// nil keeps the system accent. fill paints the whole bar in that colour instead of the 2px top line.
+    func setAccent(_ color: NSColor?, fill: Bool) {
+        accentColor = color
+        fillWhenFocused = fill
+        refreshTextTint()
+        needsDisplay = true
+    }
+    /// Titles and glyphs need a readable colour only while the focused bar is fully painted;
+    /// everywhere else the regular label colour stays.
+    private func refreshTextTint() {
+        let tinted = focused && fillWhenFocused
+        let text = tinted ? readableTextColor(on: resolvedAccent) : .labelColor
+        for button in [appButton, overflowButton] + menuButtons {
+            button.attributedTitle = NSAttributedString(string: button.title, attributes:
+                [.font: button.font ?? .systemFont(ofSize: 12), .foregroundColor: text])
+        }
+        for button in [minimizeButton, maximizeButton, closeButton] { button.contentTintColor = tinted ? text : nil }
+    }
+    private func readableTextColor(on background: NSColor) -> NSColor {
+        guard let color = background.usingColorSpace(.sRGB) else { return .labelColor }
+        let lum = 0.299 * color.redComponent + 0.587 * color.greenComponent + 0.114 * color.blueComponent
+        return lum > 0.55 ? .black : .white
     }
     private func anchor(_ frame: NSRect) -> NSPoint { NSPoint(x: frame.minX, y: frame.maxY) }
     override func layout() {
@@ -149,10 +176,16 @@ final class HeaderView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         // The whole panel is bar colour: the strip above the window and, below it, the backfill band that
         // the window in front hides everywhere except through its rounded corners. No shape is assumed.
+        // In fill style the focused window's bar colour is the accent itself.
+        if focused && fillWhenFocused {
+            resolvedAccent.setFill()
+            bounds.fill()
+            return
+        }
         NSColor.windowBackgroundColor.setFill()
         bounds.fill()
         if focused {
-            NSColor.controlAccentColor.setFill()
+            resolvedAccent.setFill()
             NSRect(x: 0, y: 0, width: bounds.width, height: 2).fill()
         }
     }

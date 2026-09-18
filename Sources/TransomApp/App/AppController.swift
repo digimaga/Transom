@@ -52,6 +52,13 @@ final class AppController: NSObject {
     private var restoreFrames: [WindowToken: Rect] = [:]
     private var extraPermits: [OperationPermit] = []
     private var lastFrontmostPID: Int32?
+    /// nil means the bar follows the system accent; a stored colour overrides it for the focused window.
+    private var accentColor: NSColor?
+    private var fillWhenFocused = false
+    private var appearanceItem: NSMenuItem?
+    private var systemAccentItem: NSMenuItem!
+    private var lineStyleItem: NSMenuItem!
+    private var fillStyleItem: NSMenuItem!
     private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
     private var excluded: Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: "excludedBundleIDs") ?? [])
@@ -59,8 +66,13 @@ final class AppController: NSObject {
 
     func start() {
         precondition(Thread.isMainThread)
-        UserDefaults.standard.register(defaults: ["enabled": true])
+        UserDefaults.standard.register(defaults: ["enabled": true, "activeBarFill": false])
         enabled = UserDefaults.standard.bool(forKey: "enabled")
+        fillWhenFocused = UserDefaults.standard.bool(forKey: "activeBarFill")
+        if let data = UserDefaults.standard.data(forKey: "activeBarColor"),
+           let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data) {
+            accentColor = color
+        }
         createStatusMenu()
         menus.workerFor = { [weak self] token in self?.worker(for: token) }
         menus.isTargetValid = { [weak self] token in self?.valid(token) ?? false }
@@ -380,6 +392,7 @@ final class AppController: NSObject {
     }
     private func makePanel(_ token: WindowToken) -> HeaderPanel {
         let panel = HeaderPanel(token: token)
+        panel.headerView.setAccent(accentColor, fill: fillWhenFocused)
         panel.headerView.onMenu = { [weak self, weak panel] headings, anchor in
             guard let self, let panel else { return }
             self.drag.cancel()
@@ -490,6 +503,21 @@ final class AppController: NSObject {
         _ = item(NSLocalizedString("最前面の1枚にバー用の空間を確保", comment: "Menu item: reserve bar space on the frontmost window"), #selector(reserveFocused))
         _ = item(NSLocalizedString("最前面のアプリを除外", comment: "Menu item: exclude the frontmost app"), #selector(excludeFocusedApplication))
         _ = item(NSLocalizedString("除外設定をすべて解除", comment: "Menu item: clear all app exclusions"), #selector(clearExclusions))
+        let appearance = NSMenuItem(title: NSLocalizedString("アクティブ時のバー", comment: "Menu: appearance of the bar on the focused window"), action: nil, keyEquivalent: "")
+        let appearanceMenu = NSMenu()
+        appearanceMenu.autoenablesItems = false
+        func sub(_ title: String, _ selector: Selector) -> NSMenuItem {
+            let i = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+            i.target = self; appearanceMenu.addItem(i); return i
+        }
+        systemAccentItem = sub(NSLocalizedString("システムアクセントに合わせる", comment: "Menu item: use the system accent color"), #selector(useSystemAccent))
+        _ = sub(NSLocalizedString("色を選択…", comment: "Menu item: pick a custom color for the active bar"), #selector(chooseAccentColor))
+        appearanceMenu.addItem(.separator())
+        lineStyleItem = sub(NSLocalizedString("上端ライン", comment: "Menu item: mark the active bar with a thin top line"), #selector(useLineStyle))
+        fillStyleItem = sub(NSLocalizedString("バー全体", comment: "Menu item: paint the whole active bar"), #selector(useFillStyle))
+        appearance.submenu = appearanceMenu
+        menu.addItem(appearance)
+        appearanceItem = appearance
         menu.addItem(.separator())
         _ = item(NSLocalizedString("アクセシビリティの許可を確認", comment: "Menu item: check accessibility permission"), #selector(requestPermission))
         _ = item(NSLocalizedString("アクセシビリティ設定を開く", comment: "Menu item: open Accessibility settings"), #selector(openAccessibilitySettings))
@@ -497,6 +525,59 @@ final class AppController: NSObject {
         menu.addItem(.separator())
         _ = item(NSLocalizedString("Transomを終了", comment: "Menu item: quit the app"), #selector(quit))
         statusItem.menu = menu
+        updateAppearanceMenu()
+    }
+    @objc private func useSystemAccent() {
+        accentColor = nil
+        UserDefaults.standard.removeObject(forKey: "activeBarColor")
+        applyAppearance()
+    }
+    @objc private func chooseAccentColor() {
+        let panel = NSColorPanel.shared
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.setTarget(self)
+        panel.setAction(#selector(accentColorChanged(_:)))
+        panel.color = accentColor ?? .controlAccentColor
+        NSApp.activate()
+        panel.orderFront(nil)
+        panel.makeKey()
+    }
+    @objc private func accentColorChanged(_ sender: NSColorPanel) {
+        accentColor = sender.color
+        if let data = try? NSKeyedArchiver.archivedData(withRootObject: sender.color, requiringSecureCoding: true) {
+            UserDefaults.standard.set(data, forKey: "activeBarColor")
+        }
+        applyAppearance()
+    }
+    @objc private func useLineStyle() { setBarFill(false) }
+    @objc private func useFillStyle() { setBarFill(true) }
+    private func setBarFill(_ fill: Bool) {
+        fillWhenFocused = fill
+        UserDefaults.standard.set(fill, forKey: "activeBarFill")
+        applyAppearance()
+    }
+    private func applyAppearance() {
+        for panel in panels.values { panel.headerView.setAccent(accentColor, fill: fillWhenFocused) }
+        updateAppearanceMenu()
+    }
+    private func updateAppearanceMenu() {
+        guard systemAccentItem != nil else { return }
+        systemAccentItem.state = accentColor == nil ? .on : .off
+        lineStyleItem.state = fillWhenFocused ? .off : .on
+        fillStyleItem.state = fillWhenFocused ? .on : .off
+        appearanceItem?.image = swatch(accentColor ?? .controlAccentColor)
+    }
+    private func swatch(_ color: NSColor) -> NSImage {
+        NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
+            let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
+            (color.usingColorSpace(.sRGB) ?? color).setFill()
+            path.fill()
+            NSColor.separatorColor.setStroke()
+            path.lineWidth = 1
+            path.stroke()
+            return true
+        }
     }
     private func status(_ message: String) {
         if lastMessage != message { logger.info("\(message, privacy: .public)") }

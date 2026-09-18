@@ -25,6 +25,11 @@
 "最前面のアプリを除外しました。" = "Excluded the frontmost app.";
 "除外設定を解除しました。" = "Cleared the exclusions.";
 "文書名を含まない診断情報をコピーしました。" = "Copied diagnostics without document names.";
+"アクティブ時のバー" = "Active Bar";
+"システムアクセントに合わせる" = "Use System Accent";
+"色を選択…" = "Choose Color…";
+"上端ライン" = "Top Line";
+"バー全体" = "Whole Bar";
 
 /* HeaderView.swift */
 "最小化" = "Minimize";
