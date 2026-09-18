@@ -19,7 +19,7 @@ for name, executable in [("Info.plist", "Transom"), ("LabInfo.plist", "TransomLa
             errors.append("Info.plist must declare en in CFBundleLocalizations")
     except Exception as error:
         errors.append(f"{name}: {error}")
-required = ["Package.swift", "README.md", "AGENTS.md", "docs/HANDOFF.md", "docs/REVIEW.md",
+required = ["Package.swift", "README.md", "README.ja.md", "AGENTS.md", "docs/HANDOFF.md", "docs/REVIEW.md",
             "docs/ACCEPTANCE.md", "docs/VALIDATION.md", "docs/SOURCES.md", "LICENSE"]
 for name in required:
     if not (root / name).is_file(): errors.append(f"Missing file: {name}")

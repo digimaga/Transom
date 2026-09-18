@@ -1,67 +1,69 @@
-# Transom — 外付けタイトルバー＋アプリメニュー
+English | [日本語](README.ja.md)
 
-名前のTransomは、ドアや窓の上に付ける小窓（欄間）のことです。対象ウィンドウの上に別枠のバーを付けるこのアプリの動作をそのまま表しています。
+# Transom — External Title Bar + App Menu
 
-Macの通常ウィンドウの上に、アプリ名・ウィンドウタイトル・操作可能なアプリメニューを追加する常駐アプリのソース一式です。元のMacのメニューバー、タイトルバー、赤・黄・緑のボタン、ツールバーは残します。
+The name Transom refers to the small window set above a door or window (a transom). It describes exactly what this app does: attach a separate bar above each target window.
 
-**状態：0.1.0-dev／Mac実機で検証中の開発版。** 設計書だけではなく、アプリ本体、AXによるメニュー実行、追従処理、ビルドスクリプト、テストを含みます。初版はLinuxで作成しましたが、2026-09-16にmacOS 26／Apple Silicon／Command Line Tools（Swift 6.4）で型チェック・リンク・共通ロジック34件のテスト（Swift Testing）・アプリバンドル生成まで確認しました。**GUI動作（バー表示、メニュー実行、Z-order、Spaces）の実機受け入れテストは未完了です。動作保証済みの完成アプリや署名・公証済みバイナリではありません。** 詳細は `docs/VALIDATION.md` と `docs/ACCEPTANCE.md`。
+A menu-bar resident app that adds an app name, a window title, and an operable app menu above each normal Mac window. The original Mac menu bar, title bar, red/yellow/green buttons, and toolbar are all left in place.
 
-## 最初に動かす
+**Status: 0.1.0-dev — a development build still undergoing real-machine verification.** This is more than a design document: it includes the app itself, AX-based menu execution, tracking, build scripts, and tests. The first version was authored on Linux; on 2026-09-16 it was type-checked, linked, unit-tested (34 common-logic tests with Swift Testing), and packaged as an .app on macOS 26 / Apple Silicon / Command Line Tools (Swift 6.4). **On-hardware GUI acceptance testing (bar display, menu execution, Z-order, Spaces) is not complete. This is not a guaranteed-working finished app or a signed and notarized binary.** See `docs/VALIDATION.md` and `docs/ACCEPTANCE.md` for details.
 
-対象：Mac、Swift 6ツールチェーン（Xcodeまたは対応するCommand Line Tools）。優先検証対象はApple Silicon／macOS 26。ビルド設定上の最低OSはmacOS 14ですが、14/15を含めて実機確認済みという意味ではありません。
+## Getting started
 
-ZIPを展開した `Transom` フォルダで、ターミナルから実行します。
+Requirements: a Mac with a Swift 6 toolchain (Xcode or the matching Command Line Tools). The primary verification target is Apple Silicon / macOS 26. The minimum OS in the build settings is macOS 14, but that does not mean 14/15 have been verified on hardware.
+
+In the extracted `Transom` folder, run from Terminal:
 
 ```bash
 bash scripts/build-app.sh
 open dist/Transom.app
 ```
 
-起動後は画面上部に **TR** が表示されます。「システム設定 → プライバシーとセキュリティ → アクセシビリティ」でTransomを許可してください。ソースは `Package.swift` をXcodeで開いて編集できます。依存する外部SwiftパッケージやHomebrew/XcodeGenはありません。
+After launch, **TR** appears at the top of the screen. Allow Transom under "System Settings → Privacy & Security → Accessibility". Edit the source by opening `Package.swift` in Xcode. There are no external Swift packages, Homebrew, or XcodeGen dependencies.
 
-**初回は、通常ウィンドウを画面の上端から40ポイント程度下へ移動して試してください。** バーは高さ30ポイントの完全な外付けです。バーは窓の背面に置かれ、窓の上端より48pt下まで同じ色で続きます。前面の窓に隠れて、角丸から透けて見える部分だけがバーとの隙間を埋めるので、窓の前には何も重ねません。上に空間がない場合、元のボタンや本文に重ねず、非表示になります。TRメニューの「最前面の1枚にバー用の空間を確保」でも、その1枚だけに空間を作れます。この操作だけは対象窓の移動・必要に応じた縮小を行います。起動時の一括移動や自動リサイズはしません。
+**On first run, try moving a normal window down about 40 points from the top of the screen.** The bar is a fully external strip 30 points high. It sits behind the window and continues in the same colour down to 48 pt below the window's top edge; hidden behind the window itself, it fills the gap that would otherwise show through the rounded corners, so nothing is overlaid in front of the window. When there is no room above, the bar is hidden rather than overlapping the original buttons or content. The TR menu item "Reserve Bar Space on Frontmost Window" can also create room, for that one window only — it is the single operation that moves (and, if needed, shrinks) the target window. There is no bulk move or automatic resize at launch.
 
-## 入っているもの
+## What's included
 
-- アプリ名の表示（文書名はツールチップのみ）、アプリメニューと「ファイル」「編集」等の取得、狭いバーでのメニュー省略表示 `»`。
-- 右端にWindows風のウィンドウボタン（最小化・最大化・閉じる）。最小化と閉じるは窓自身のボタンをAXで1回だけ押す。最大化はバーの高さを空けて画面いっぱいに配置し、もう一度押すと元の枠に戻す。
-- 非アクティブパネル、外付けタイトル部分のドラッグ、イベント＋状態照合による追従。
-- 標準NSMenuによる階層メニュー表示と、元アプリのAXPressによるコマンド実行。Mac本来のメニューは残ります。
-- 本体UI（ステータスメニュー・ボタン・エラー表示）は日本語・英語対応。OSの言語設定に追従します。
-- プロセス・ウィンドウの世代、フォーカス、文書・選択状態、メニュー項目の再検証。応答不明時に自動再試行しません。
-- 正確なウィンドウIDの動的取得、相対Z-orderの設定・事後照合。正常な対応を確認できなければ表示・操作を停止します。
-- ビルドスクリプト、34件の共通ロジックテスト、独立した検証用アプリTransomLab、レビュー記録、実機チェックリスト。
+- App name display (document names appear only in the tool tip), retrieval of the app menu and items such as "File"/"Edit", and a `»` overflow indicator on narrow bars.
+- Windows-style window buttons (minimize, maximize, close) at the right edge. Minimize and close press the window's own buttons via AX exactly once. Maximize fills the screen while leaving room for the bar, and pressing it again restores the previous frame.
+- Non-activating panels, dragging from the external title area, and tracking driven by both events and state verification.
+- Hierarchical menus via standard NSMenu and command execution via AXPress on the original app. The original Mac menu remains.
+- Re-verification of process/window generations, focus, document/selection state, and menu items. No automatic retries when a response is uncertain.
+- Dynamic lookup of exact window IDs and relative Z-order placement with post-hoc verification. If a correct correspondence cannot be confirmed, display and interaction stop.
+- Build scripts, 40 common-logic tests, an independent verification app TransomLab, review records, and an on-hardware checklist.
+- The app's own UI (status menu, buttons, error messages) supports Japanese and English, following the OS language setting.
 
-## 大事な制限
+## Important limitations
 
-ネイティブフルスクリーン、シート、モーダルダイアログは装飾対象外です。幅280ポイント未満などの小さい窓も対象外です。画面端、複数画面にまたがる窓、画面外にはみ出す窓で外付けバー全体が収まらない場合も表示しません。
+Native full-screen windows, sheets, and modal dialogs are not decorated. Small windows under 280 points wide are also out of scope. The bar is not shown when it cannot fully fit: at screen edges, on windows spanning multiple displays, or on windows extending off-screen.
 
-メニューはアプリがアクセシビリティ経由で公開する範囲です。遅延生成・独自UI・Optionキーで切り替わる項目等の完全互換は未実装です。通常項目でも、変更や曖昧さを検知した場合は実行を中止します。メニューが正しく取得できないアプリでは元のMacメニューを使ってください。
+Menus are limited to what apps expose through accessibility. Full compatibility for lazily generated items, custom UIs, and Option-key alternatives is not implemented. Even for normal items, execution is aborted if a change or ambiguity is detected. For apps whose menus cannot be retrieved correctly, use the original Mac menu.
 
-Spacesは「現在表示されている対象窓に合わせ、外付け側の表示を切り替える」実装です。WindowServer内部で真の親子ウィンドウにするものではありません。Mission Control、Stage Manager、Spaces遷移のアニメーションまで一体化する保証はありません。
+Spaces support is a display-projection approach: "switch the external bar's display to match the target windows currently visible". It does not make the bar a true child window inside WindowServer. There is no guarantee of unified animation with Mission Control, Stage Manager, or Space transitions.
 
-非公開APIの存在だけではABIの互換性や動作を保証できません。SIPを無効化する手順、他アプリへのコード注入、画面録画、ネットワーク送信、グローバルキーロガーは含みません。Mac App Store向けの構成ではありません。
+The mere existence of a private API does not guarantee ABI compatibility or behaviour. Nothing here disables SIP, injects code into other apps, captures the screen, sends network traffic, or logs keystrokes. This is not a Mac App Store configuration.
 
-## ビルドとテスト
+## Build and test
 
 ```bash
-# Mac: アプリ2本のコンパイル＋共通テスト＋構成チェック
+# Mac: compile both apps + common tests + configuration checks
 bash scripts/verify.sh
 
-# 最適化ビルド
+# Optimized build
 bash scripts/build-app.sh --release
 
-# 別アプリの検証用フィクスチャ
+# Verification fixture for another app
 bash scripts/build-app.sh --lab
 open dist/TransomLab.app
 ```
 
-`build-app.sh` はローカル開発用のアドホック署名を行います。Appleの公証は行いません。署名を変更したりビルドし直したりすると、アクセシビリティ許可の再登録が必要な場合があります。起動中の旧版をTRメニューから終了してから差し替えてください。固定した `.app` の場所から起動し、`swift run` やXcode内の実行とTCCの許可対象を混同しないでください。
+`build-app.sh` performs ad-hoc signing for local development. Apple notarization is not performed. Changing the signature or rebuilding may require re-granting accessibility permission. Quit the running old version from the TR menu before replacing it. Launch from a fixed `.app` location, and do not mix up the TCC permission target between `swift run`, Xcode runs, and the bundled app.
 
-自分の署名IDを使う場合のみ、環境変数 `CODESIGN_IDENTITY` を指定できます。署名鍵や証明書は同梱していません。
+Only when using your own signing identity, set the `CODESIGN_IDENTITY` environment variable. No signing keys or certificates are included.
 
-## 開発引き継ぎ
+## Development handoff
 
-`docs/HANDOFF.md` が実機側の作業順序です。`docs/REVIEW.md` に修正した問題と未検証リスク、`docs/ACCEPTANCE.md` に合格基準があります。Codex／Claude Code等へ引き継ぐ際は、ルートの `AGENTS.md` とこれらの文書を読ませてください。
+`docs/HANDOFF.md` is the on-hardware work order. `docs/REVIEW.md` lists fixed issues and unverified risks; `docs/ACCEPTANCE.md` gives the acceptance criteria. When handing off to Codex / Claude Code and similar agents, have them read the root `AGENTS.md` and these documents.
 
-ライセンスはMIT。参照したAPI・先行実装は `docs/SOURCES.md` に記載しています。
+License: MIT. Referenced APIs and prior implementations are listed in `docs/SOURCES.md`.
