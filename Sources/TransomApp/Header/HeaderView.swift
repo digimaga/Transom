@@ -151,9 +151,6 @@ final class HeaderView: NSView {
         // the window in front hides everywhere except through its rounded corners. No shape is assumed.
         NSColor.windowBackgroundColor.setFill()
         bounds.fill()
-        let strip = min(bounds.height, stripHeight)
-        NSColor.separatorColor.setFill()
-        NSRect(x: 0, y: strip - 1, width: bounds.width, height: 1).fill()
         if focused {
             NSColor.controlAccentColor.setFill()
             NSRect(x: 0, y: 0, width: bounds.width, height: 2).fill()
