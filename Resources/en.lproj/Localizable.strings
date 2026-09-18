@@ -34,6 +34,19 @@
 "なし" = "None";
 "バーの色" = "Bar Color";
 "システム標準に合わせる" = "Use System Default";
+"バーの高さ" = "Bar Height";
+"30px（標準）" = "30px (Default)";
+"除外中のアプリ" = "Excluded Apps";
+"除外中のアプリはありません" = "No Excluded Apps";
+"このアプリを除外しました。" = "Excluded the app.";
+"除外を解除しました。" = "Removed the exclusion.";
+"このウィンドウにはバー用の空間を確保できません。" = "This window can't reserve bar space.";
+"バー用の空間を確保しました。" = "Reserved bar space on the window.";
+"ログイン時に起動" = "Launch at Login";
+"ログイン時の起動を解除しました。" = "Launch at login disabled.";
+"ログイン時に起動するよう登録しました。" = "Transom will launch at login.";
+"システム設定の「ログイン項目」でTransomを許可してください。" = "Allow Transom under Login Items in System Settings.";
+"ログイン時の起動の設定に失敗しました。" = "Couldn't change the launch at login setting.";
 
 /* HeaderView.swift */
 "最小化" = "Minimize";
@@ -42,6 +55,8 @@
 "残りのメニュー" = "More Menus";
 "残りのアプリメニュー" = "More App Menus";
 "%@ のアプリメニュー" = "%@ App Menu";
+"このウィンドウにバー用の空間を確保" = "Reserve Bar Space on This Window";
+"このアプリを除外" = "Exclude This App";
 
 /* HeaderPanel.swift */
 "Transom 外付けタイトルバー" = "Transom External Title Bar";

@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import OSLog
+import ServiceManagement
 import TransomCore
 
 @MainActor
@@ -16,7 +17,7 @@ private final class WorkerState {
 }
 
 @MainActor
-final class AppController: NSObject {
+final class AppController: NSObject, NSMenuDelegate {
     private let server = WindowServer()
     private let menus = MenuCoordinator()
     private let drag = DragCoordinator()
@@ -59,6 +60,8 @@ final class AppController: NSObject {
     private var fillWhenFocused = false
     /// Thickness of the accent line on the focused bar, 0–5 points; 0 draws no line.
     private var lineWidth = 2
+    /// Height of the external bar in points; Geometry.headerHeight is the default.
+    private var barHeight = Geometry.headerHeight
     private var appearanceItem: NSMenuItem?
     private var systemAccentItem: NSMenuItem!
     private var lineStyleItem: NSMenuItem!
@@ -66,6 +69,10 @@ final class AppController: NSObject {
     private var lineWidthItems: [NSMenuItem] = []
     private var baseColorItem: NSMenuItem?
     private var systemBaseItem: NSMenuItem!
+    private var barHeightItems: [NSMenuItem] = []
+    private var loginItem: NSMenuItem!
+    /// Submenu listing the excluded apps; rebuilt by menuNeedsUpdate each time it opens.
+    private var exclusionMenu: NSMenu!
     private let ownPID = Int32(ProcessInfo.processInfo.processIdentifier)
     private var excluded: Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: "excludedBundleIDs") ?? [])
@@ -73,10 +80,13 @@ final class AppController: NSObject {
 
     func start() {
         precondition(Thread.isMainThread)
-        UserDefaults.standard.register(defaults: ["enabled": true, "activeBarFill": false, "activeBarLineWidth": 2])
+        UserDefaults.standard.register(defaults: ["enabled": true, "activeBarFill": false, "activeBarLineWidth": 2,
+                                                  "barHeight": Geometry.headerHeight])
         enabled = UserDefaults.standard.bool(forKey: "enabled")
         fillWhenFocused = UserDefaults.standard.bool(forKey: "activeBarFill")
         lineWidth = min(5, max(0, UserDefaults.standard.integer(forKey: "activeBarLineWidth")))
+        barHeight = min(40, max(24, UserDefaults.standard.double(forKey: "barHeight")))
+        drag.headerHeight = barHeight
         if let data = UserDefaults.standard.data(forKey: "activeBarColor"),
            let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data) {
             accentColor = color
@@ -281,7 +291,7 @@ final class AppController: NSObject {
             if menus.target == token { menus.cancel() }
             guard Geometry.isEligibleSize(frame),
                   let screen = Geometry.bestScreen(for: frame, visibleFrames: geometry.visibleFrames),
-                  let external = Geometry.externalHeader(for: frame, in: screen) else {
+                  let external = Geometry.externalHeader(for: frame, in: screen, height: barHeight) else {
                 panel.hide()
                 continue
             }
@@ -351,7 +361,7 @@ final class AppController: NSObject {
                   Geometry.isEligibleSize(frame),
                   !geometry.fullFrames.contains(where: { $0.approximatelyEquals(frame, tolerance: 1) }),
                   let screen = Geometry.bestScreen(for: frame, visibleFrames: geometry.visibleFrames),
-                  let external = Geometry.externalHeader(for: frame, in: screen) else {
+                  let external = Geometry.externalHeader(for: frame, in: screen, height: barHeight) else {
                 panels[token]?.hide()
                 menus.cancel(ifTarget: token)
                 continue
@@ -405,7 +415,8 @@ final class AppController: NSObject {
     private func makePanel(_ token: WindowToken) -> HeaderPanel {
         let panel = HeaderPanel(token: token)
         panel.headerView.setAppearance(accent: accentColor, base: baseColor,
-                                       fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
+                                       fill: fillWhenFocused, lineWidth: CGFloat(lineWidth),
+                                       height: CGFloat(barHeight))
         panel.headerView.onMenu = { [weak self, weak panel] headings, anchor in
             guard let self, let panel else { return }
             self.drag.cancel()
@@ -422,6 +433,8 @@ final class AppController: NSObject {
         panel.headerView.onMinimize = { [weak self] in self?.pressWindowButton(token, attribute: "AXMinimizeButton") }
         panel.headerView.onClose = { [weak self] in self?.pressWindowButton(token, attribute: "AXCloseButton") }
         panel.headerView.onMaximize = { [weak self] in self?.toggleMaximize(token) }
+        panel.headerView.onReserveSpace = { [weak self] in self?.reserveOnBar(token) }
+        panel.headerView.onExclude = { [weak self] in self?.exclude(token) }
         return panel
     }
     /// Minimize / close through the window's own standard button. Only the exact window can be hit; the
@@ -447,7 +460,7 @@ final class AppController: NSObject {
               let actual = metadata?.byID[token.windowID]?.frame,
               let geometry = ScreenGeometry.current(),
               let screen = Geometry.bestScreen(for: actual, visibleFrames: geometry.visibleFrames),
-              let maximized = Geometry.maximizedFrame(in: screen) else {
+              let maximized = Geometry.maximizedFrame(in: screen, headerHeight: barHeight) else {
             status(NSLocalizedString("このウィンドウは最大化できません。",
                                       comment: "Status: the target window can't be maximized"))
             return
@@ -459,27 +472,72 @@ final class AppController: NSObject {
                                       comment: "Status: no recorded size to restore to"))
             return
         }
+        reposition(token, worker: worker, actual: actual, desired: desired) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                if restoring { self.restoreFrames[token] = nil } else { self.restoreFrames[token] = actual }
+                self.status(restoring
+                    ? NSLocalizedString("元のサイズに戻しました。", comment: "Status: window restored to its original size")
+                    : NSLocalizedString("最大化しました。", comment: "Status: window maximized"))
+            case .failure(let error): self.status(error.localizedDescription)
+            }
+            self.dirtyApplications.insert(token.pid)
+            self.fastPollUntil = ProcessInfo.processInfo.systemUptime + 0.3
+            self.requestMetadata()
+        }
+    }
+    /// The context-menu counterpart of "reserve space": the same explicit user command for ONE window,
+    /// run on the bar it was chosen from rather than the frontmost window.
+    private func reserveOnBar(_ token: WindowToken) {
+        guard valid(token), let worker = worker(for: token),
+              let actual = metadata?.byID[token.windowID]?.frame,
+              let geometry = ScreenGeometry.current(),
+              let screen = Geometry.bestScreen(for: actual, visibleFrames: geometry.visibleFrames),
+              let desired = Geometry.reserveSpace(for: actual, in: screen, headerHeight: barHeight) else {
+            status(NSLocalizedString("このウィンドウにはバー用の空間を確保できません。",
+                                      comment: "Status: the clicked window can't reserve bar space"))
+            return
+        }
+        if actual.approximatelyEquals(desired) {
+            status(NSLocalizedString("このウィンドウには既に空間があります。位置は変更しませんでした。",
+                                      comment: "Status: window already has reserved space"))
+            return
+        }
+        menus.cancel(); drag.cancel(); reservePermit?.cancel()
+        reposition(token, worker: worker, actual: actual, desired: desired) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                self.status(NSLocalizedString("バー用の空間を確保しました。",
+                                               comment: "Status: reserved bar space on the clicked window"))
+            case .failure(let error): self.status(error.localizedDescription)
+            }
+            self.dirtyApplications.insert(token.pid)
+            self.fastPollUntil = ProcessInfo.processInfo.systemUptime + 0.3
+            self.requestMetadata()
+        }
+    }
+    /// Shared path of the explicit commands that move or resize ONE window (maximize/restore, reserve
+    /// bar space): activate the app, pass the strict AX focus check, then set position/size once.
+    private func reposition(_ token: WindowToken, worker: AXAppWorker, actual: Rect, desired: Rect,
+                            completion: @escaping @MainActor (Result<Rect, Error>) -> Void) {
         let permit = OperationPermit(lifetime: 5)
         reservePermit = permit; reserveTarget = token
         _ = NSRunningApplication(processIdentifier: token.pid)?.activate() // best effort; focus() verifies
         worker.focus(token, permit: permit) { [weak self] focusResult in
             guard let self, permit.isValid() else { return }
-            if case .failure(let error) = focusResult { self.status(error.localizedDescription); permit.cancel(); return }
+            if case .failure(let error) = focusResult {
+                self.status(error.localizedDescription)
+                permit.cancel()
+                self.reserveTarget = nil
+                return
+            }
             worker.reserve(token, expected: actual, desired: desired, permit: permit) { [weak self] result in
                 guard let self else { return }
                 permit.cancel()
                 self.reserveTarget = nil
-                switch result {
-                case .success:
-                    if restoring { self.restoreFrames[token] = nil } else { self.restoreFrames[token] = actual }
-                    self.status(restoring
-                        ? NSLocalizedString("元のサイズに戻しました。", comment: "Status: window restored to its original size")
-                        : NSLocalizedString("最大化しました。", comment: "Status: window maximized"))
-                case .failure(let error): self.status(error.localizedDescription)
-                }
-                self.dirtyApplications.insert(token.pid)
-                self.fastPollUntil = ProcessInfo.processInfo.systemUptime + 0.3
-                self.requestMetadata()
+                completion(result)
             }
         }
     }
@@ -516,6 +574,13 @@ final class AppController: NSObject {
         _ = item(NSLocalizedString("最前面の1枚にバー用の空間を確保", comment: "Menu item: reserve bar space on the frontmost window"), #selector(reserveFocused))
         _ = item(NSLocalizedString("最前面のアプリを除外", comment: "Menu item: exclude the frontmost app"), #selector(excludeFocusedApplication))
         _ = item(NSLocalizedString("除外設定をすべて解除", comment: "Menu item: clear all app exclusions"), #selector(clearExclusions))
+        let excludedItem = NSMenuItem(title: NSLocalizedString("除外中のアプリ", comment: "Menu: apps excluded from the bar"), action: nil, keyEquivalent: "")
+        let excludedMenu = NSMenu()
+        excludedMenu.autoenablesItems = false
+        excludedMenu.delegate = self
+        excludedItem.submenu = excludedMenu
+        menu.addItem(excludedItem)
+        exclusionMenu = excludedMenu
         let appearance = NSMenuItem(title: NSLocalizedString("アクティブ時のバー", comment: "Menu: appearance of the bar on the focused window"), action: nil, keyEquivalent: "")
         let appearanceMenu = NSMenu()
         appearanceMenu.autoenablesItems = false
@@ -554,12 +619,25 @@ final class AppController: NSObject {
         base.submenu = baseMenu
         menu.addItem(base)
         baseColorItem = base
+        let height = NSMenuItem(title: NSLocalizedString("バーの高さ", comment: "Menu: height of the external bar"), action: nil, keyEquivalent: "")
+        let heightMenu = NSMenu()
+        heightMenu.autoenablesItems = false
+        for value in [24, 28, 30, 34, 38] {
+            let i = NSMenuItem(title: value == 30
+                ? NSLocalizedString("30px（標準）", comment: "Menu item: default bar height")
+                : "\(value)px", action: #selector(setBarHeight(_:)), keyEquivalent: "")
+            i.target = self; i.tag = value; heightMenu.addItem(i); barHeightItems.append(i)
+        }
+        height.submenu = heightMenu
+        menu.addItem(height)
         menu.addItem(.separator())
+        loginItem = item(NSLocalizedString("ログイン時に起動", comment: "Menu item: launch Transom automatically at login"), #selector(toggleLoginItem))
         _ = item(NSLocalizedString("アクセシビリティの許可を確認", comment: "Menu item: check accessibility permission"), #selector(requestPermission))
         _ = item(NSLocalizedString("アクセシビリティ設定を開く", comment: "Menu item: open Accessibility settings"), #selector(openAccessibilitySettings))
         _ = item(NSLocalizedString("診断情報をコピー（文書名を含まない）", comment: "Menu item: copy diagnostics without document names"), #selector(copyDiagnostics))
         menu.addItem(.separator())
         _ = item(NSLocalizedString("Transomを終了", comment: "Menu item: quit the app"), #selector(quit))
+        menu.delegate = self
         statusItem.menu = menu
         updateAppearanceMenu()
     }
@@ -598,6 +676,15 @@ final class AppController: NSObject {
         UserDefaults.standard.set(lineWidth, forKey: "activeBarLineWidth")
         applyAppearance()
     }
+    @objc private func setBarHeight(_ sender: NSMenuItem) {
+        barHeight = Double(sender.tag)
+        UserDefaults.standard.set(barHeight, forKey: "barHeight")
+        drag.headerHeight = barHeight
+        applyAppearance()
+        // Header frames are recomputed from the window metadata on every pass; the next render
+        // repositions and resizes the panels to the new strip height on its own.
+        requestMetadata()
+    }
     @objc private func useSystemBase() {
         baseColor = nil
         UserDefaults.standard.removeObject(forKey: "barBaseColor")
@@ -624,7 +711,8 @@ final class AppController: NSObject {
     private func applyAppearance() {
         for panel in panels.values {
             panel.headerView.setAppearance(accent: accentColor, base: baseColor,
-                                           fill: fillWhenFocused, lineWidth: CGFloat(lineWidth))
+                                           fill: fillWhenFocused, lineWidth: CGFloat(lineWidth),
+                                           height: CGFloat(barHeight))
         }
         updateAppearanceMenu()
     }
@@ -637,6 +725,7 @@ final class AppController: NSObject {
         appearanceItem?.image = swatch(accentColor ?? .controlAccentColor)
         systemBaseItem.state = baseColor == nil ? .on : .off
         baseColorItem?.image = swatch(baseColor ?? .windowBackgroundColor)
+        for item in barHeightItems { item.state = Double(item.tag) == barHeight ? .on : .off }
     }
     private func swatch(_ color: NSColor) -> NSImage {
         NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
@@ -694,7 +783,7 @@ final class AppController: NSObject {
               let actual = metadata?.byID[snapshot.token.windowID]?.frame,
               let geometry = ScreenGeometry.current(),
               let screen = Geometry.bestScreen(for: actual, visibleFrames: geometry.visibleFrames),
-              let desired = Geometry.reserveSpace(for: actual, in: screen) else {
+              let desired = Geometry.reserveSpace(for: actual, in: screen, headerHeight: barHeight) else {
             status(NSLocalizedString("空間を確保できる通常ウィンドウを選択してください。",
                                       comment: "Status: no eligible window to reserve space on"))
             return
@@ -724,16 +813,79 @@ final class AppController: NSObject {
     @objc private func excludeFocusedApplication() {
         guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != ownPID,
               let bundle = app.bundleIdentifier else { return }
+        addExclusion(bundle, pid: app.processIdentifier)
+        status(NSLocalizedString("最前面のアプリを除外しました。", comment: "Status: excluded the frontmost app"))
+    }
+    /// The context-menu exclusion: same effect as "exclude frontmost app" but for the app owning the
+    /// bar the menu was opened on.
+    private func exclude(_ token: WindowToken) {
+        guard token.pid != ownPID, let bundle = workers[token.pid]?.worker.descriptor.bundleIdentifier else { return }
+        addExclusion(bundle, pid: token.pid)
+        status(NSLocalizedString("このアプリを除外しました。", comment: "Status: excluded the app of the clicked bar"))
+    }
+    private func addExclusion(_ bundle: String, pid: Int32) {
         var values = excluded
         values.insert(bundle)
         UserDefaults.standard.set(Array(values).sorted(), forKey: "excludedBundleIDs")
-        retire(app.processIdentifier)
-        status(NSLocalizedString("最前面のアプリを除外しました。", comment: "Status: excluded the frontmost app"))
+        retire(pid)
+    }
+    /// Removes one entry of the "excluded apps" submenu; the bundle id rides in representedObject.
+    @objc private func removeExclusion(_ sender: NSMenuItem) {
+        guard let bundle = sender.representedObject as? String else { return }
+        var values = excluded
+        values.remove(bundle)
+        UserDefaults.standard.set(Array(values).sorted(), forKey: "excludedBundleIDs")
+        lastApplicationsRefresh = 0
+        status(NSLocalizedString("除外を解除しました。", comment: "Status: removed one app exclusion"))
     }
     @objc private func clearExclusions() {
         UserDefaults.standard.removeObject(forKey: "excludedBundleIDs")
         lastApplicationsRefresh = 0
         status(NSLocalizedString("除外設定を解除しました。", comment: "Status: cleared the app exclusions"))
+    }
+    @objc private func toggleLoginItem() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+                status(NSLocalizedString("ログイン時の起動を解除しました。", comment: "Status: launch at login disabled"))
+            } else {
+                try service.register()
+                // macOS can accept the registration but still require approval in System Settings.
+                status(service.status == .enabled
+                    ? NSLocalizedString("ログイン時に起動するよう登録しました。", comment: "Status: launch at login enabled")
+                    : NSLocalizedString("システム設定の「ログイン項目」でTransomを許可してください。", comment: "Status: launch at login needs approval in System Settings"))
+            }
+        } catch {
+            status(NSLocalizedString("ログイン時の起動の設定に失敗しました。", comment: "Status: failed to change the launch at login setting"))
+        }
+        loginItem.state = service.status == .enabled ? .on : .off
+    }
+    /// Refreshes the dynamic parts of the status menu: the login-item checkbox and, when the
+    /// "excluded apps" submenu opens, its per-app entries (one item removes one exclusion).
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === statusItem.menu {
+            loginItem?.state = SMAppService.mainApp.status == .enabled ? .on : .off
+            return
+        }
+        guard menu === exclusionMenu else { return }
+        menu.removeAllItems()
+        let ids = UserDefaults.standard.stringArray(forKey: "excludedBundleIDs") ?? []
+        guard !ids.isEmpty else {
+            let none = NSMenuItem(title: NSLocalizedString("除外中のアプリはありません", comment: "Menu: no excluded apps"),
+                                  action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+            return
+        }
+        let running = NSWorkspace.shared.runningApplications
+        for id in ids {
+            let item = NSMenuItem(title: running.first(where: { $0.bundleIdentifier == id })?.localizedName ?? id,
+                                  action: #selector(removeExclusion(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = id
+            menu.addItem(item)
+        }
     }
     @objc private func copyDiagnostics() {
         let info: [String: Any] = [

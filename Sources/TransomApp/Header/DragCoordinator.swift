@@ -29,6 +29,8 @@ final class DragCoordinator {
     /// The session ended (release, failure or cancellation) after at least one step was attempted.
     var onFinished: ((WindowToken) -> Void)?
     private var session: Session?
+    /// Height of the external header; a drag keeps this much of the bar reachable on the target screen.
+    var headerHeight = Geometry.headerHeight
     var target: WindowToken? { session?.token }
 
     func cancel() {
@@ -64,7 +66,7 @@ final class DragCoordinator {
         // When dragging this header, keep the header itself reachable on the destination screen.
         if let screen = geometry.visibleFrames.first(where: {
             mouse.x >= $0.x && mouse.x <= $0.maxX && mouse.y >= $0.y && mouse.y <= $0.maxY
-        }) { point.y = max(point.y, screen.y + 30) }
+        }) { point.y = max(point.y, screen.y + headerHeight) }
         session.desired = point
         pump()
     }
