@@ -58,9 +58,9 @@ bash scripts/build-app.sh --lab
 open dist/TransomLab.app
 ```
 
-`build-app.sh` performs ad-hoc signing for local development. Apple notarization is not performed. Changing the signature or rebuilding may require re-granting accessibility permission. Quit the running old version from the TR menu before replacing it. Launch from a fixed `.app` location, and do not mix up the TCC permission target between `swift run`, Xcode runs, and the bundled app.
+`build-app.sh` signs with the self-signed `Transom` certificate when it exists in the login keychain, and falls back to ad-hoc signing otherwise. Apple notarization is not performed. Changing the signature or rebuilding may require re-granting accessibility permission. Quit the running old version from the TR menu before replacing it. Launch from a fixed `.app` location, and do not mix up the TCC permission target between `swift run`, Xcode runs, and the bundled app.
 
-Only when using your own signing identity, set the `CODESIGN_IDENTITY` environment variable. No signing keys or certificates are included.
+To force a specific identity (including `-` for ad-hoc), set the `CODESIGN_IDENTITY` environment variable. No signing keys or certificates are included.
 
 ## Development handoff
 

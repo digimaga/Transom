@@ -38,7 +38,11 @@ if [[ "$PRODUCT" == "Transom" ]] && compgen -G "Resources/*.lproj" > /dev/null; 
 fi
 printf 'APPL????' > "$STAGING/Contents/PkgInfo"
 /usr/bin/plutil -lint "$STAGING/Contents/Info.plist"
-SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+if [[ -z "${CODESIGN_IDENTITY:-}" ]] && /usr/bin/security find-certificate -c Transom >/dev/null 2>&1; then
+  SIGN_IDENTITY=Transom
+else
+  SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+fi
 SIGN_ARGS=(--force --sign "$SIGN_IDENTITY" --options runtime)
 if [[ "$SIGN_IDENTITY" != "-" ]]; then SIGN_ARGS+=(--timestamp); fi
 /usr/bin/codesign "${SIGN_ARGS[@]}" "$STAGING"
