@@ -423,10 +423,12 @@ final class AppController: NSObject, NSMenuDelegate {
             self.menus.request(target: token, headings: headings, panel: panel, anchor: anchor)
         }
         panel.headerView.onActivate = { [weak self] in self?.activate(token) }
-        panel.headerView.onDragBegan = { [weak self, weak panel] in
-            guard let self, let panel, self.valid(token), let worker = self.worker(for: token), let frame = panel.targetFrame else { return }
+        panel.headerView.onDragBegan = { [weak self, weak panel] mouseDownPoint in
+            guard let self, let panel, self.valid(token), let worker = self.worker(for: token),
+                  let frame = panel.targetFrame, let geometry = ScreenGeometry.current() else { return }
             self.menus.cancel()
-            self.drag.begin(token: token, worker: worker, frame: frame)
+            self.drag.begin(token: token, worker: worker, frame: frame,
+                            initialMouse: geometry.globalMouse(at: mouseDownPoint))
         }
         panel.headerView.onDragMoved = { [weak self] in self?.drag.moved() }
         panel.headerView.onDragEnded = { [weak self] in self?.drag.ended() }

@@ -216,6 +216,38 @@ import Foundation
     }
 }
 
+@Suite struct TitleBarGestureTests {
+    @Test func testSingleClickDragBeginsImmediately() {
+        var gesture = TitleBarGesture()
+        #expect(gesture.mouseDown(clickCount: 1) == [.beginDrag])
+        #expect(gesture.mouseDragged(distance: 1) == [.moveDrag])
+        #expect(gesture.mouseUp() == [.endDrag])
+    }
+
+    @Test func testStationaryDoubleClickRunsOnlyOnMouseUp() {
+        var gesture = TitleBarGesture()
+        #expect(gesture.mouseDown(clickCount: 2).isEmpty)
+        #expect(gesture.mouseDragged(distance: 2.9).isEmpty)
+        #expect(gesture.mouseUp() == [.doubleClick])
+    }
+
+    @Test func testDragOnSecondClickWinsOverDoubleClick() {
+        var gesture = TitleBarGesture()
+        #expect(gesture.mouseDown(clickCount: 2).isEmpty)
+        #expect(gesture.mouseDragged(distance: 3) == [.beginDrag, .moveDrag])
+        #expect(gesture.mouseDragged(distance: 12) == [.moveDrag])
+        #expect(gesture.mouseUp() == [.endDrag])
+    }
+
+    @Test func testNewMouseDownResetsIncompleteGesture() {
+        var gesture = TitleBarGesture()
+        _ = gesture.mouseDown(clickCount: 2)
+        #expect(gesture.mouseDown(clickCount: 1) == [.beginDrag])
+        #expect(gesture.mouseUp() == [.endDrag])
+        #expect(gesture.mouseDragged(distance: 20).isEmpty)
+    }
+}
+
 @Suite struct PresenceTests {
     let token = WindowToken(processInstance: UUID(), pid: 123, windowID: 1, incarnation: 1)
     @Test func testTransientFailureDoesNotMeanClosed() {

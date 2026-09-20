@@ -48,20 +48,38 @@ private final class ActionButton: NSButton {
 /// the window's own title bar and the app's tabs already name the document, and the app name sits at the
 /// left of the bar. The tool tip still carries "app — title" for anyone who hovers.
 private final class DragSurface: NSView {
-    var began: (() -> Void)?
+    var began: ((NSPoint) -> Void)?
     var moved: (() -> Void)?
     var ended: (() -> Void)?
     /// Windows-style: a double click on the empty stretch toggles maximize instead of starting a drag.
     var doubleClicked: (() -> Void)?
+    private var gesture = TitleBarGesture()
+    private var mouseDownPoint = NSPoint.zero
+    private var mouseDownScreenPoint = NSPoint.zero
     override init(frame frameRect: NSRect) { super.init(frame: frameRect) }
     required init?(coder: NSCoder) { fatalError("Programmatic UI only") }
     override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount >= 2 { doubleClicked?() } else { began?() }
+        mouseDownPoint = event.locationInWindow
+        mouseDownScreenPoint = NSEvent.mouseLocation
+        dispatch(gesture.mouseDown(clickCount: event.clickCount))
     }
-    override func mouseDragged(with event: NSEvent) { moved?() }
-    override func mouseUp(with event: NSEvent) { ended?() }
+    override func mouseDragged(with event: NSEvent) {
+        dispatch(gesture.mouseDragged(distance: hypot(event.locationInWindow.x - mouseDownPoint.x,
+                                                       event.locationInWindow.y - mouseDownPoint.y)))
+    }
+    override func mouseUp(with event: NSEvent) { dispatch(gesture.mouseUp()) }
+    private func dispatch(_ actions: [TitleBarGesture.Action]) {
+        for action in actions {
+            switch action {
+            case .beginDrag: began?(mouseDownScreenPoint)
+            case .moveDrag: moved?()
+            case .endDrag: ended?()
+            case .doubleClick: doubleClicked?()
+            }
+        }
+    }
 }
 
 final class HeaderView: NSView {
@@ -84,6 +102,9 @@ final class HeaderView: NSView {
     /// The header strip occupies the top of the view; the rest is the backfill band that runs on behind
     /// the target window and shows only through its rounded corners. Its height is user-configurable.
     private var stripHeight = CGFloat(Geometry.headerHeight)
+    private var gesture = TitleBarGesture()
+    private var mouseDownPoint = NSPoint.zero
+    private var mouseDownScreenPoint = NSPoint.zero
     /// Text, glyphs and the app icon scale modestly with the bar height.
     private var fontSize: CGFloat { min(14, max(11, (stripHeight * 0.42).rounded(.down))) }
     private var symbolSize: CGFloat { min(13, max(10, (stripHeight * 0.37).rounded(.down))) }
@@ -92,7 +113,7 @@ final class HeaderView: NSView {
     private var controlButtons: [(button: ActionButton, symbol: String, label: String)] = []
     var onMenu: (([MenuHeading], NSPoint) -> Void)?
     var onActivate: (() -> Void)?
-    var onDragBegan: (() -> Void)?
+    var onDragBegan: ((NSPoint) -> Void)?
     var onDragMoved: (() -> Void)?
     var onDragEnded: (() -> Void)?
     var onMinimize: (() -> Void)?
@@ -169,7 +190,7 @@ final class HeaderView: NSView {
             let rest = Array(self.headings.dropFirst().dropFirst(layout.visibleMenuCount))
             if !rest.isEmpty { self.onMenu?(rest, self.anchor(self.overflowButton.frame)) }
         }
-        titleSurface.began = { [weak self] in self?.onDragBegan?() }
+        titleSurface.began = { [weak self] point in self?.onDragBegan?(point) }
         titleSurface.moved = { [weak self] in self?.onDragMoved?() }
         titleSurface.ended = { [weak self] in self?.onDragEnded?() }
         titleSurface.doubleClicked = { [weak self] in self?.onMaximize?() }
@@ -190,10 +211,25 @@ final class HeaderView: NSView {
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount >= 2 { onMaximize?() } else { onDragBegan?() }
+        mouseDownPoint = event.locationInWindow
+        mouseDownScreenPoint = NSEvent.mouseLocation
+        dispatch(gesture.mouseDown(clickCount: event.clickCount))
     }
-    override func mouseDragged(with event: NSEvent) { onDragMoved?() }
-    override func mouseUp(with event: NSEvent) { onDragEnded?() }
+    override func mouseDragged(with event: NSEvent) {
+        dispatch(gesture.mouseDragged(distance: hypot(event.locationInWindow.x - mouseDownPoint.x,
+                                                       event.locationInWindow.y - mouseDownPoint.y)))
+    }
+    override func mouseUp(with event: NSEvent) { dispatch(gesture.mouseUp()) }
+    private func dispatch(_ actions: [TitleBarGesture.Action]) {
+        for action in actions {
+            switch action {
+            case .beginDrag: onDragBegan?(mouseDownScreenPoint)
+            case .moveDrag: onDragMoved?()
+            case .endDrag: onDragEnded?()
+            case .doubleClick: onMaximize?()
+            }
+        }
+    }
 
     func update(_ snapshot: WindowSnapshot, icon: NSImage?, focused: Bool) {
         self.focused = focused

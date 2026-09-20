@@ -95,8 +95,11 @@ struct ScreenGeometry {
             fullFrames: NSScreen.screens.map { Geometry.flip(Rect($0.frame), primaryHeight: height) })
     }
     func appKit(_ rect: Rect) -> NSRect { Geometry.flip(rect, primaryHeight: primaryHeight).cgRect }
-    @MainActor func globalMouse() -> Point {
-        Geometry.flip(Point(x: Double(NSEvent.mouseLocation.x), y: Double(NSEvent.mouseLocation.y)),
+    func globalMouse(at appKitPoint: NSPoint) -> Point {
+        Geometry.flip(Point(x: Double(appKitPoint.x), y: Double(appKitPoint.y)),
                       primaryHeight: primaryHeight)
+    }
+    @MainActor func globalMouse() -> Point {
+        globalMouse(at: NSEvent.mouseLocation)
     }
 }

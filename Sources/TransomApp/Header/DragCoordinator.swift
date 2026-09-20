@@ -39,12 +39,11 @@ final class DragCoordinator {
         self.session = nil
         if session.ready { onFinished?(session.token) }
     }
-    func begin(token: WindowToken, worker: AXAppWorker, frame: Rect) {
+    func begin(token: WindowToken, worker: AXAppWorker, frame: Rect, initialMouse: Point) {
         cancel()
-        guard let geometry = ScreenGeometry.current(),
-              let app = NSRunningApplication(processIdentifier: token.pid), !app.isTerminated else { return }
+        guard let app = NSRunningApplication(processIdentifier: token.pid), !app.isTerminated else { return }
         _ = app.activate() // best effort; the AX path in focus() and validateFocus gate the drag
-        let session = Session(token: token, worker: worker, origin: frame, mouse: geometry.globalMouse())
+        let session = Session(token: token, worker: worker, origin: frame, mouse: initialMouse)
         self.session = session
         worker.focus(token, permit: session.permit) { [weak self, weak session] result in
             guard let self, let session, self.session?.id == session.id, session.permit.isValid() else { return }
