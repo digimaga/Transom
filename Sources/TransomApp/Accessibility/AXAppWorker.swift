@@ -295,32 +295,73 @@ final class AXAppWorker {
     }
     func reserve(_ token: WindowToken, expected: Rect, desired: Rect, permit: OperationPermit,
                  completion: @escaping @MainActor (Result<Rect, Error>) -> Void) {
+        let sizeChanges = abs(expected.height - desired.height) > 0.5 || abs(expected.width - desired.width) > 0.5
+        let grows = desired.width > expected.width + 0.5 || desired.height > expected.height + 0.5
+        let intermediate = grows
+            ? Rect(x: desired.x, y: desired.y, width: expected.width, height: expected.height)
+            : Rect(x: expected.x, y: expected.y, width: desired.width, height: desired.height)
         submit({ worker in
             let record = try worker.validateFocus(token)
             guard permit.isValid(), worker.lifetime.isValid(), desired.isValid,
                   try AX.frame(record.element).approximatelyEquals(expected, tolerance: 2),
                   AX.settable(record.element, kAXPositionAttribute) else { throw TransomError.stale }
-            let sizeChanges = abs(expected.height - desired.height) > 0.5 || abs(expected.width - desired.width) > 0.5
             if sizeChanges, !AX.settable(record.element, kAXSizeAttribute) {
                 throw TransomError.unavailable(NSLocalizedString("このウィンドウはサイズを変更できません。", comment: "Error: window's size can't be changed"))
             }
-            // Position + size is not atomic. Do not silently rollback over later user changes.
-            // AppKit keeps a window inside its screen at each step, so the order matters: when growing
-            // (maximize) move first, then resize; when shrinking (restore) resize first, then move.
-            // Otherwise the intermediate frame is clamped and the final frame is wrong.
-            let grows = desired.width > expected.width + 0.5 || desired.height > expected.height + 0.5
+            // Grow: move first. Shrink: resize first. Neither write is retried or rolled back.
             if grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
-            if sizeChanges {
-                guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
-                try AX.setSize(record.element, desired)
+            else if sizeChanges { try AX.setSize(record.element, desired) }
+        }) { result in
+            if case .failure(let error) = result { completion(.failure(error)); return }
+            // macOS 27 AX reports the destination while AppKit is still animating the first write.
+            // Resizing during that move clamps the height against the intermediate screen position.
+            // Confirm its actual WindowServer frame before issuing the second, single AX write.
+            self.awaitPlacement(token, frame: intermediate, tolerance: 0.5, permit: permit) { result in
+                if case .failure(let error) = result { completion(.failure(error)); return }
+                self.submit({ worker in
+                    let record = try worker.validateFocus(token)
+                    guard permit.isValid(), worker.lifetime.isValid(),
+                          try AX.frame(record.element).approximatelyEquals(intermediate, tolerance: 2) else {
+                        throw TransomError.stale
+                    }
+                    if grows {
+                        if sizeChanges { try AX.setSize(record.element, desired) }
+                    } else {
+                        try AX.setPosition(record.element, Point(x: desired.x, y: desired.y))
+                    }
+                }) { result in
+                    if case .failure(let error) = result { completion(.failure(error)); return }
+                    self.awaitPlacement(token, frame: desired, tolerance: 2, permit: permit) { result in
+                        if case .failure(let error) = result { completion(.failure(error)); return }
+                        self.submit({ worker in
+                            let record = try worker.validateFocus(token)
+                            guard permit.isValid() else { throw TransomError.cancelled }
+                            let actual = try AX.frame(record.element)
+                            guard actual.approximatelyEquals(desired, tolerance: 2) else {
+                                throw TransomError.unavailable(NSLocalizedString("アプリが配置を補正しました。実際の配置を確認してください。", comment: "Error: app adjusted the placement, check the actual position"))
+                            }
+                            return actual
+                        }, completion: completion)
+                    }
+                }
             }
-            guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
-            if !grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
-            let actual = try AX.frame(record.element)
-            guard actual.approximatelyEquals(desired, tolerance: 2) else {
-                throw TransomError.unavailable(NSLocalizedString("アプリが配置を補正しました。実際の配置を確認してください。", comment: "Error: app adjusted the placement, check the actual position"))
-            }
-            return actual
-        }, completion: completion)
+        }
+    }
+    /// Read-only confirmation uses the operation's existing permit deadline, with no AX write retry.
+    /// CG metadata stays on MainActor; synchronous AX calls stay on the per-app queue.
+    @MainActor
+    private func awaitPlacement(_ token: WindowToken, frame: Rect, tolerance: Double, permit: OperationPermit,
+                                completion: @escaping @MainActor (Result<Void, Error>) -> Void) {
+        guard permit.isValid(), lifetime.isValid() else {
+            completion(.failure(TransomError.cancelled)); return
+        }
+        WindowServer.flushPendingTransaction()
+        guard let actual = WindowServer.describe([token.windowID]).first, actual.pid == token.pid else {
+            completion(.failure(TransomError.stale)); return
+        }
+        if actual.frame.approximatelyEquals(frame, tolerance: tolerance) { completion(.success(())); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) {
+            MainRunLoop.perform { self.awaitPlacement(token, frame: frame, tolerance: tolerance, permit: permit, completion: completion) }
+        }
     }
 }

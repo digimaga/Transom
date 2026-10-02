@@ -51,6 +51,8 @@ final class AppController: NSObject, NSMenuDelegate {
     private var reserveTarget: WindowToken?
     /// Frames recorded by the header's maximize button, restored by pressing it again.
     private var restoreFrames: [WindowToken: Rect] = [:]
+    /// Independent vertical restoration, so using the maximize button does not overwrite it.
+    private var verticalRestoreFrames: [WindowToken: Rect] = [:]
     private var extraPermits: [OperationPermit] = []
     private var lastFrontmostPID: Int32?
     /// nil means the bar follows the system accent; a stored colour overrides it for the focused window.
@@ -444,6 +446,7 @@ final class AppController: NSObject, NSMenuDelegate {
         panel.headerView.onMinimize = { [weak self] in self?.pressWindowButton(token, attribute: "AXMinimizeButton") }
         panel.headerView.onClose = { [weak self] in self?.pressWindowButton(token, attribute: "AXCloseButton") }
         panel.headerView.onMaximize = { [weak self] in self?.toggleMaximize(token) }
+        panel.headerView.onVerticalMaximize = { [weak self] in self?.toggleVerticalMaximize(token) }
         panel.headerView.onReserveSpace = { [weak self] in self?.reserveOnBar(token) }
         panel.headerView.onExclude = { [weak self] in self?.exclude(token) }
         return panel
@@ -498,6 +501,46 @@ final class AppController: NSObject, NSMenuDelegate {
             self.requestMetadata()
         }
     }
+    /// Windows-style vertical maximize from a double-click on the bar's top edge: the window keeps its
+    /// x and width and stretches from just below the bar to the bottom of the usable screen area.
+    /// Pressing it again restores the frame recorded here, like the maximize button.
+    private func toggleVerticalMaximize(_ token: WindowToken) {
+        guard valid(token), let worker = worker(for: token),
+              let actual = metadata?.byID[token.windowID]?.frame,
+              let geometry = ScreenGeometry.current(),
+              let screen = Geometry.bestScreen(for: actual, visibleFrames: geometry.visibleFrames),
+              let filled = Geometry.maximizedFrame(in: screen, headerHeight: barHeight) else {
+            status(NSLocalizedString("このウィンドウは最大化できません。",
+                                      comment: "Status: the target window can't be maximized"))
+            return
+        }
+        menus.cancel(); drag.cancel(); reservePermit?.cancel()
+        let vertical = Rect(x: actual.x, y: filled.y, width: actual.width, height: filled.height)
+        let restoring = actual.approximatelyEquals(vertical, tolerance: 2)
+        // Restoring changes only the vertical axis, including after a horizontal drag or resize.
+        let restored = verticalRestoreFrames[token].map {
+            Rect(x: actual.x, y: $0.y, width: actual.width, height: $0.height)
+        }
+        guard let desired = restoring ? restored : vertical else {
+            status(NSLocalizedString("元のサイズが記録されていないため戻せません。ドラッグで調整してください。",
+                                      comment: "Status: no recorded size to restore to"))
+            return
+        }
+        reposition(token, worker: worker, actual: actual, desired: desired) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                if restoring { self.verticalRestoreFrames[token] = nil } else { self.verticalRestoreFrames[token] = actual }
+                self.status(restoring
+                    ? NSLocalizedString("元のサイズに戻しました。", comment: "Status: window restored to its original size")
+                    : NSLocalizedString("上下いっぱいに広げました。", comment: "Status: window expanded to full height"))
+            case .failure(let error): self.status(error.localizedDescription)
+            }
+            self.dirtyApplications.insert(token.pid)
+            self.fastPollUntil = ProcessInfo.processInfo.systemUptime + 0.3
+            self.requestMetadata()
+        }
+    }
     /// The context-menu counterpart of "reserve space": the same explicit user command for ONE window,
     /// run on the bar it was chosen from rather than the frontmost window.
     private func reserveOnBar(_ token: WindowToken) {
@@ -537,7 +580,7 @@ final class AppController: NSObject, NSMenuDelegate {
         reservePermit = permit; reserveTarget = token
         _ = NSRunningApplication(processIdentifier: token.pid)?.activate() // best effort; focus() verifies
         worker.focus(token, permit: permit) { [weak self] focusResult in
-            guard let self, permit.isValid() else { return }
+            guard let self, self.reservePermit === permit, permit.isValid() else { return }
             if case .failure(let error) = focusResult {
                 self.status(error.localizedDescription)
                 permit.cancel()
@@ -545,7 +588,7 @@ final class AppController: NSObject, NSMenuDelegate {
                 return
             }
             worker.reserve(token, expected: actual, desired: desired, permit: permit) { [weak self] result in
-                guard let self else { return }
+                guard let self, self.reservePermit === permit else { return }
                 permit.cancel()
                 self.reserveTarget = nil
                 completion(result)
@@ -557,6 +600,7 @@ final class AppController: NSObject, NSMenuDelegate {
         if drag.target == token { drag.cancel() }
         panels.removeValue(forKey: token)?.close()
         restoreFrames[token] = nil
+        verticalRestoreFrames[token] = nil
     }
     private func activate(_ token: WindowToken) {
         guard valid(token), let worker = worker(for: token) else { return }

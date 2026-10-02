@@ -1,5 +1,23 @@
 # 検証結果 — 作成環境
 
+## 2026-10-02：上端ダブルクリックによる縦方向最大化
+
+環境：macOS 27.0.1（26A434）／M1 MacBook Pro・arm64／Xcode 27.0（27A266a）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。実機確認時の使用可能領域は(0,33,1728x994)、外付けバー30pt。
+
+上端5ptの空き部分をダブルクリックすると横位置・幅を保持して上下へ拡張し、再度で縦位置・高さだけを復元する。通常最大化とは復元履歴を分離した。DragSurfaceの座標系を親と同じ上端原点にし、上端と下端の取り違えを修正した。
+
+実機で見つかった配置不良も根本修正した。AXPosition設定直後のAX取得値は移動先だったが、WindowServerでは元の位置が残り、LabのNSWindowDidMoveイベントがその後に連続して届いた。移動アニメーション中にAXSizeを設定すると、その途中の位置を基準に高さが切り詰められた。診断用の150ms待機でも改善しなかった。位置／サイズを各1回だけ設定する既存の順序を維持し、1段目がWindowServerの実際の枠へ反映された後に2段目を送るよう変更した。完了時も実際の枠と厳密なAX対象・フォーカスを照合する。追加の固定タイムアウトや書込みの再試行、ロールバックはなく、既存の5秒OperationPermitで取消可能。AXはアプリ別キュー、CGメタデータ取得はMainActorに閉じ込めた。最終枠の許容差は従来の2ptを維持する。
+
+確認：
+
+- 診断ビルドをLabのフォーカス中の1枚だけに限定して物理ダブルクリックを実施。B（2231）は(240,439,680x448)→(240,63,680x963)。横位置と幅は不変、画面底との差は1ptで既存許容差内。再度の上端操作で元の枠へ完全復帰。A（2229）の枠は全過程で不変。
+- 下端のダブルクリックは通常最大化(0,63,1728x963)、中央のダブルクリックで元の枠へ完全復帰。
+- 縦最大化→通常最大化→通常復元で縦最大化状態へ戻り、続く縦復元で元の(240,439,680x448)へ完全復帰。履歴が混ざらないことをWindowServerのIDと枠で照合。
+- 横方向ドラッグを外付け／ネイティブの両方で操作したが、今回の操作ツールでは位置変化を確認できなかった。横位置・幅を手動変更した後の縦復元は未確認として残す。これを成功扱いしていない。
+- 診断コードを除いた作業ツリーで`bash scripts/verify.sh`成功（44件／7 suite、両アプリのコンパイル）。`build-app.sh`と`--lab`で固定の`dist`へ構築し、両方の`Authority=Transom`と`codesign --verify --strict`成功。通常版を起動し、Finderを含む通常アプリのバー表示を確認。通常版では操作ツールが同名パネルのうちFinderを選択するため、Labの縦操作の追加再実行はしていない。診断ビルドで確認した配置・ジェスチャ処理と通常版の実装は同一。検証用Labを終了し、通常版Transomを稼働させている。
+
+証拠：`/tmp/transom-vertical-final-verify-20261002.log`、`/tmp/transom-vertical-production-build-20261002.log`、`/tmp/transom-vertical-production-lab-build-20261002.log`、`/tmp/transom-vertical-production-started.json`、`/tmp/transom-vertical-runtime-20261002.log`、`/tmp/transom-vertical-final-before.json`、`/tmp/transom-vertical-final-expanded.json`、`/tmp/transom-vertical-final-restored.json`、`/tmp/transom-vertical-full-expanded.json`、`/tmp/transom-vertical-full-restored.json`、`/tmp/transom-vertical-history-vertical.json`、`/tmp/transom-vertical-history-restored.json`。診断用の表示制限・AX計測・Labイベント計測はGitと通常版に含めない。追加権限・SIP変更なし。第三者アプリ・複数画面・Spaces切替の全体再検証は未実施。
+
 ## 2026-10-02：クリック・複数窓フォーカス・メニュー下段の復旧
 
 環境は同日の下記記録と同じ。修正分類は根本修正。下記の初回対応で残っていた問題を追加調査した。

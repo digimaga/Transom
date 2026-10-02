@@ -5,6 +5,7 @@
 "元のサイズが記録されていないため戻せません。ドラッグで調整してください。" = "Can't restore because the original size wasn't recorded. Adjust it by dragging instead.";
 "元のサイズに戻しました。" = "Restored to the original size.";
 "最大化しました。" = "Maximized.";
+"上下いっぱいに広げました。" = "Expanded to full height.";
 "外付けバーを有効にする" = "Enable External Bar";
 "最前面の1枚にバー用の空間を確保" = "Reserve Bar Space on Frontmost Window";
 "最前面のアプリを除外" = "Exclude Frontmost App";

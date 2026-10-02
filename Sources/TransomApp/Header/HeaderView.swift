@@ -61,9 +61,15 @@ private final class DragSurface: NSView {
     var ended: (() -> Void)?
     /// Windows-style: a double click on the empty stretch toggles maximize instead of starting a drag.
     var doubleClicked: (() -> Void)?
+    /// Double click in the top edge band (like the Windows top border): vertical maximize instead.
+    var topEdgeDoubleClicked: (() -> Void)?
+    /// Height of the top band that counts as the window's "top border" for double-clicks.
+    var topEdgeBand = CGFloat(5)
     private var gesture = TitleBarGesture()
     private var mouseDownPoint = NSPoint.zero
     private var mouseDownScreenPoint = NSPoint.zero
+    private var pendingTopEdgeDoubleClick = false
+    override var isFlipped: Bool { true }
     override init(frame frameRect: NSRect) { super.init(frame: frameRect) }
     required init?(coder: NSCoder) { fatalError("Programmatic UI only") }
     override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
@@ -73,6 +79,8 @@ private final class DragSurface: NSView {
         NSApp.preventWindowOrdering()
         mouseDownPoint = event.locationInWindow
         mouseDownScreenPoint = NSEvent.mouseLocation
+        // The view is flipped and sits at y=0 of the bar, so a small local y is the top edge.
+        pendingTopEdgeDoubleClick = convert(event.locationInWindow, from: nil).y <= topEdgeBand
         dispatch(gesture.mouseDown(clickCount: event.clickCount))
     }
     override func mouseDragged(with event: NSEvent) {
@@ -86,7 +94,9 @@ private final class DragSurface: NSView {
             case .beginDrag: began?(mouseDownScreenPoint)
             case .moveDrag: moved?()
             case .endDrag: ended?()
-            case .doubleClick: doubleClicked?()
+            case .doubleClick:
+                if pendingTopEdgeDoubleClick { topEdgeDoubleClicked?() }
+                else { doubleClicked?() }
             }
         }
     }
@@ -115,6 +125,7 @@ final class HeaderView: NSView {
     private var gesture = TitleBarGesture()
     private var mouseDownPoint = NSPoint.zero
     private var mouseDownScreenPoint = NSPoint.zero
+    private var pendingTopEdgeDoubleClick = false
     /// Text, glyphs and the app icon scale modestly with the bar height.
     private var fontSize: CGFloat { min(14, max(11, (stripHeight * 0.42).rounded(.down))) }
     private var symbolSize: CGFloat { min(13, max(10, (stripHeight * 0.37).rounded(.down))) }
@@ -128,6 +139,8 @@ final class HeaderView: NSView {
     var onDragEnded: (() -> Void)?
     var onMinimize: (() -> Void)?
     var onMaximize: (() -> Void)?
+    /// Windows-style vertical maximize: a double click in the bar's top edge band.
+    var onVerticalMaximize: (() -> Void)?
     var onClose: (() -> Void)?
     var onReserveSpace: (() -> Void)?
     var onExclude: (() -> Void)?
@@ -204,6 +217,7 @@ final class HeaderView: NSView {
         titleSurface.moved = { [weak self] in self?.onDragMoved?() }
         titleSurface.ended = { [weak self] in self?.onDragEnded?() }
         titleSurface.doubleClicked = { [weak self] in self?.onMaximize?() }
+        titleSurface.topEdgeDoubleClicked = { [weak self] in self?.onVerticalMaximize?() }
         applyMetrics()
         setAccessibilityElement(false)
     }
@@ -225,6 +239,8 @@ final class HeaderView: NSView {
         NSApp.preventWindowOrdering()
         mouseDownPoint = event.locationInWindow
         mouseDownScreenPoint = NSEvent.mouseLocation
+        // Flipped view: a small y is the top edge band, treated like the Windows top border.
+        pendingTopEdgeDoubleClick = convert(event.locationInWindow, from: nil).y <= 5
         dispatch(gesture.mouseDown(clickCount: event.clickCount))
     }
     override func mouseDragged(with event: NSEvent) {
@@ -238,7 +254,9 @@ final class HeaderView: NSView {
             case .beginDrag: onDragBegan?(mouseDownScreenPoint)
             case .moveDrag: onDragMoved?()
             case .endDrag: onDragEnded?()
-            case .doubleClick: onMaximize?()
+            case .doubleClick:
+                if pendingTopEdgeDoubleClick { onVerticalMaximize?() }
+                else { onMaximize?() }
             }
         }
     }
