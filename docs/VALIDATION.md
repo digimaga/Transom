@@ -1,5 +1,28 @@
 # 検証結果 — 作成環境
 
+## 2026-10-02：外付けバーのクリック時の前後順変更を抑制
+
+環境：macOS 27.0.1（26A434）／M1 MacBook Pro・arm64／Xcode 27.0（27A266a）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。
+
+診断ビルドでは、前後順の照合が失敗してバーを透明化した直後に、そのバーへmouse-down／mouse-upが届き、ボタンの実行処理が呼ばれない状態を記録した。これは報告されたちらつきと整合するが、macOS更新で変更された内部処理までは特定していない。
+
+`ActionButton`・`DragSurface`・`HeaderView`の各ヒット対象で、AppKitの`shouldDelayWindowOrdering(for:)`と`preventWindowOrdering()`を使用し、クリックによるバー自身の自動前面化を抑える。ボタンは最初のクリックを明示的に受け付け、通常のNSButtonの処理へ渡す。対象窓の正確なID・フォーカス・文脈の照合、アプリ別AXキュー、OperationPermitによるAXPressの一回実行は変更していない。
+
+確認した結果：
+
+- 作業ツリーで`bash scripts/verify.sh`成功。Transom・TransomLabのビルドと44件（7 suite）のテストが成功。
+- 今回のクリック処理の差分だけを含む一時コピーでも`verify.sh`成功。同じコピーで`bash scripts/build-app.sh`と`--lab`成功。既存の未commitの縦方向最大化の変更は配布物に含めていない。
+- 固定パスの`dist/Transom.app`・`dist/TransomLab.app`を更新。`Authority=Transom`と`codesign --verify --strict`成功を確認。新しい権限の付与や設定変更は実施していない。
+- CUAによるAX操作で、TransomLabの外付けアプリメニューと「ファイル」メニューの展開、Escによるアプリメニューの取消を確認。
+- 外付けの「検証保存」を1回選択し、`~/Library/Application Support/TransomLab/events.log`に`2026-10-02T06:53:19Z SAVE window=A id=1428`の1件だけが記録されたことを確認。
+- 外付けの閉じるボタンを1回操作し、B（window ID 1430）が閉じ、A（1428）が残ることをAXの本文表示とWindowServerのIDで確認。閉じる操作の再試行はしていない。
+
+未確認・制限：自動操作でも操作前後にバーの再配置・一時非表示が発生したため、通常のマウスで「1回で毎回開く」「ちらつきが解消した」ことの合格にはしていない。2窓が開いている間、Aのメニュー操作は`focused-window`の不一致で拒否された。Bを閉じた後のAではメニュー展開と保存が成功した。このフォーカス拒否の原因、実マウスでの連続クリック、ドラッグ、ダブルクリック、他アプリでの再現解消、Spacesの回帰確認は未完了。既存の合格記録は当時のOSと手順に限定され、macOS 27での合格を意味しない。
+
+今回のログ：`/tmp/transom-final-verify-20261002.log`、`/tmp/transom-final-snapshot-verify-20261002.log`、`/tmp/transom-final-build-20261002.log`、`/tmp/transom-final-lab-build-20261002.log`、`/tmp/transom-interaction-20261002.log`、`/tmp/transom-fixed-interaction-20261002.log`。これらは一時ファイルであり、Gitには含めていない。診断用の追加ログコードは配布物に含めていない。
+
+## 作成時（2026-09-10）の記録
+
 日付：2026-09-10
 
 |項目|結果|

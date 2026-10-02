@@ -23,6 +23,14 @@ private final class ActionButton: NSButton {
     required init?(coder: NSCoder) { fatalError("Programmatic UI only") }
     @objc private func fire() { invoke?() }
     override var acceptsFirstResponder: Bool { false }
+    // AppKit asks the hit view, not its parent. Keep the non-key bar behind its target throughout
+    // button tracking; otherwise the ordering check can hide it before mouse-up and lose the click.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func shouldDelayWindowOrdering(for event: NSEvent) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        NSApp.preventWindowOrdering()
+        super.mouseDown(with: event)
+    }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
@@ -60,7 +68,9 @@ private final class DragSurface: NSView {
     required init?(coder: NSCoder) { fatalError("Programmatic UI only") }
     override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func shouldDelayWindowOrdering(for event: NSEvent) -> Bool { true }
     override func mouseDown(with event: NSEvent) {
+        NSApp.preventWindowOrdering()
         mouseDownPoint = event.locationInWindow
         mouseDownScreenPoint = NSEvent.mouseLocation
         dispatch(gesture.mouseDown(clickCount: event.clickCount))
@@ -210,7 +220,9 @@ final class HeaderView: NSView {
         needsLayout = true
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func shouldDelayWindowOrdering(for event: NSEvent) -> Bool { true }
     override func mouseDown(with event: NSEvent) {
+        NSApp.preventWindowOrdering()
         mouseDownPoint = event.locationInWindow
         mouseDownScreenPoint = NSEvent.mouseLocation
         dispatch(gesture.mouseDown(clickCount: event.clickCount))
