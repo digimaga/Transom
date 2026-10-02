@@ -103,13 +103,19 @@ final class WindowServer {
     /// Puts the panel directly BEHIND its target with AppKit's public relative order. The target then hides
     /// the panel's backfill band and leaves only the bar above the window visible. The private SkyLight
     /// transaction (WBOrderAboveWindow) is not used: it orders above, and it failed on macOS 26 anyway.
-    /// The call is subject to the independent metadata check (`OrderingPolicy.isDirectlyBehind`) before
-    /// the panel is revealed. Returns false only when the panel has no window number yet.
+    /// Flush and verify the resulting order in this same main-thread turn. A successful AppKit call
+    /// alone does not prove the panel is safe to reveal; missing IDs or an intervening window fail.
     @discardableResult
-    func order(_ panel: NSPanel, behind target: UInt32) -> Bool {
+    func order(_ panel: HeaderPanel, behind target: UInt32) -> ServerSnapshot? {
         precondition(Thread.isMainThread)
         panel.level = .normal
         panel.order(.below, relativeTo: Int(target))
-        return panel.windowNumber > 0
+        guard let id = UInt32(exactly: panel.windowNumber), id != 0,
+              let header = panel.globalHeaderFrame,
+              let confirmed = read(own: (pid: ProcessInfo.processInfo.processIdentifier, windows: [id])) else { return nil }
+        guard OrderingPolicy.isDirectlyBehind(headerID: id, targetID: target,
+            ownPID: ProcessInfo.processInfo.processIdentifier,
+            headerFrame: Geometry.panelFrame(forHeader: header), frontToBack: confirmed.ordering) else { return nil }
+        return confirmed
     }
 }

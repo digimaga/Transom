@@ -1,5 +1,27 @@
 # 検証結果 — 作成環境
 
+## 2026-10-02：クリック・複数窓フォーカス・メニュー下段の復旧
+
+環境は同日の下記記録と同じ。修正分類は根本修正。下記の初回対応で残っていた問題を追加調査した。
+
+- 一時非表示の直後にマウスイベントが届き、ヒット対象が消えてボタンが発火しない経路を確認。前後順が乱れたら公開APIで直し、同じMainActorの処理内でWindowServerを再読して`OrderingPolicy`を確認する。成功した配置情報を次の判定へ引き継ぎ、確認済みのバーを古い情報で再び隠さない。新たに順序が乱れた場合は即時修復し、未解決の配置失敗だけ従来の間隔で抑制する。確認できなければバーは非表示のまま。
+- 同名2窓でB（ID 1631）の`AXRaise`成功後もA（1628）がフォーカス先に残り、0.6秒後に`focused-window`で拒否される事実を記録。アプリの`AXFocusedWindow`は変更不可、対象窓の`AXMain`は変更可能だった。対象の`AXMain`を設定する修正後、Aが前面の状態からBの外付けメニューを1回クリックし、実際のフォーカスIDが1631になって厳密な照合を通った。照合条件は削除していない。
+- 利用者が「1回で開くがメニュー下半分が欠ける」と報告。バーのviewに結びつけていたNSMenuを、画面座標を使う独立表示に変更した（[Appleの公開API](https://developer.apple.com/documentation/appkit/nsmenu/popup(positioning:at:in:))）。変更後、利用者が上下の項目を完全に見えると確認。WindowServerでも高さ58ptのメニューがlayer 101で対象窓より前面にあることを確認。
+
+実機確認：
+
+- 修正の診断ビルドで物理クリックの経路を確認。Aの保存は`2026-10-02T07:44:14Z SAVE window=A id=1628`、Bの保存は`2026-10-02T07:50:42Z SAVE window=B id=1631`に記録。保存先のA.txt／B.txtの本文もそれぞれ対応する窓。各操作は1要求で、AXPressの再試行なし。
+- 独立表示の新メニューを外付け「ファイル」の1回クリックで開き、Down・ReturnでBへ保存。記録は`2026-10-02T07:58:06Z SAVE window=B id=1631`の1件。Down・Down・Returnで下段の「検証用シートを開く」が動作。シート中はBのバーが非表示となり、シートを閉じると復帰。
+- 外付けの閉じるを1回クリックし、B（1631）だけが終了、A（1628）が残ることをAXの本文表示とWindowServerのIDで照合。表示更新ツールはバー消失で`noWindowsAvailable`になったが、閉じるの再実行はしていない。
+- 診断コードとTransomLabだけの表示制限を除いた完成版で、通常アプリ（ChatGPT表示のCodex窓）の外付け「ファイル」を物理クリック1回で開き、高さ152ptの独立メニュー（layer 101）が表示されたことを確認。Escapeで取消、コマンド実行なし。
+- 完成版のFinderの外付け「ファイル」もAX経路で展開。WindowServer上で高さ538ptのメニューがlayer 101で前面にあり、対象Finderがfrontmostであることを確認。Escapeで取消、実コマンド実行なし。
+- 作業ツリーと担当差分だけの一時コピーで`bash scripts/verify.sh`成功。44件／7 suite、両アプリのコンパイル成功。一時コピーで`build-app.sh`と`--lab`成功、`Authority=Transom`と`codesign --verify --strict`成功。固定の`dist/Transom.app`／`dist/TransomLab.app`に反映。既存の未commitの縦方向最大化は配布物に含めていない。
+- 一時的に非表示にしたFinderは非表示解除を確認（`isHidden=false`）。追加権限、SIP変更、疑似ショートカットへの置換はなし。検証用Labを終了し、通常版Transomを起動している。
+
+範囲と制約：今回の不具合経路を実機で確認した。すべての第三者アプリ、Spaces切替、複数画面、ドラッグ／ダブルクリック等の受入項目全体をmacOS 27で再実施したという意味ではない。初回記録の複数窓フォーカス拒否とメニュー欠けは、上記修正・再確認で解消した。
+
+証拠：`/tmp/transom-recovery-diagnostic.log`、`/tmp/transom-recovery-final-runtime.log`、`/tmp/transom-recovery-final-verify.log`、`/tmp/transom-recovery-owned-verify.log`、`/tmp/transom-recovery-owned-build.log`、`/tmp/transom-recovery-owned-lab-build.log`、`~/Library/Application Support/TransomLab/events.log`。ログと診断コードはGit・配布物に含めていない。文書名・メニューラベルを追加ログに出していない。
+
 ## 2026-10-02：外付けバーのクリック時の前後順変更を抑制
 
 環境：macOS 27.0.1（26A434）／M1 MacBook Pro・arm64／Xcode 27.0（27A266a）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。

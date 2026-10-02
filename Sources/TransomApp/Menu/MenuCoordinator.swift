@@ -66,7 +66,11 @@ final class MenuCoordinator {
                 let menu = self.makeMenu(model.entries, selection: selection)
                 self.activeMenu = menu
                 // The panel remains non-key and this app is never explicitly activated here.
-                menu.popUp(positioning: nil, at: anchor, in: panel.headerView)
+                // A view-bound popup joins the header's ordering group. Reordering that header
+                // behind the target can then put the lower menu rows behind the target too.
+                // Screen coordinates keep the native menu independent of the non-key header.
+                let screenAnchor = panel.convertPoint(toScreen: panel.headerView.convert(anchor, to: nil))
+                menu.popUp(positioning: nil, at: screenAnchor, in: nil)
                 self.activeMenu = nil
                 guard self.requestID == request, permit.isValid(), self.isTargetValid?(target) == true,
                       NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid,

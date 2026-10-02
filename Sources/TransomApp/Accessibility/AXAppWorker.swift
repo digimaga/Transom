@@ -209,6 +209,13 @@ final class AXAppWorker {
             }
             let error = AXUIElementPerformAction(record.element, kAXRaiseAction as CFString)
             guard error == .success else { throw TransomError.ax(error.rawValue) }
+            // AXRaise can succeed while a sibling stays focused (observed on macOS 27).
+            // AppKit exposes AXMain on each standard window even when the application's
+            // AXFocusedWindow is read-only. Request the exact window as main, then verify
+            // focused identity below; this never substitutes a different window or retries a command.
+            if AX.settable(record.element, kAXMainAttribute) {
+                try AX.set(record.element, kAXMainAttribute, kCFBooleanTrue as CFTypeRef)
+            }
             if AX.settable(worker.application, kAXFocusedWindowAttribute) {
                 try AX.set(worker.application, kAXFocusedWindowAttribute, record.element)
             }

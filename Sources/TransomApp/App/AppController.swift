@@ -343,7 +343,7 @@ final class AppController: NSObject, NSMenuDelegate {
             return
         }
         let byID = metadata.byID
-        let ordering = metadata.ordering
+        var ordering = metadata.ordering
         let current = NSWorkspace.shared.frontmostApplication?.processIdentifier
         lastFrontmostPID = current
         let snapshots = workers.values.flatMap(\.snapshots)
@@ -395,17 +395,26 @@ final class AppController: NSObject, NSMenuDelegate {
                 panel.unsafeCount = 0
                 panel.reveal()
             } else {
-                if panel.alphaValue >= 1 { logger.debug("conceal panel=\(panelID, privacy: .public) target=\(token.windowID, privacy: .public) safe=\(safe, privacy: .public) visible=\(panel.isVisible, privacy: .public)") }
-                panel.probe()
-                if now - panel.orderRequestedAt > 0.12 {
+                if panel.alphaValue >= 1 { logger.debug("reconcile panel=\(panelID, privacy: .public) target=\(token.windowID, privacy: .public) safe=\(safe, privacy: .public) visible=\(panel.isVisible, privacy: .public)") }
+                // Throttle only an unresolved ordering failure. A newly disturbed, previously
+                // confirmed header must be repaired immediately even after a recent click.
+                if panel.unsafeCount == 0 || now - panel.orderRequestedAt > 0.12 {
                     panel.orderRequestedAt = now
                     panel.unsafeCount += 1
-                    // Confirm the new order at the fast cadence so the header is back within about a frame
-                    // or two instead of waiting for the idle poll. Bounded: a header that keeps failing
-                    // the check (covered by a foreign window) drops back to the idle cadence.
+                    // A failed repair gets a bounded fast check; persistent failures return to
+                    // the idle cadence. Successful repairs are confirmed synchronously below.
                     if panel.unsafeCount <= 2 { fastPollUntil = max(fastPollUntil, now + 0.15) }
                     logger.debug("order panel=\(panelID, privacy: .public) behind=\(token.windowID, privacy: .public) unsafeCount=\(panel.unsafeCount, privacy: .public)")
-                    if !server.order(panel, behind: token.windowID) { panel.hide() }
+                    // Repair and confirm before concealing. Hiding the hit view while the ordering
+                    // transaction is already being repaired drops a mouse-down queued by WindowServer.
+                    if let confirmed = server.order(panel, behind: token.windowID) {
+                        self.metadata = confirmed
+                        ordering = confirmed.ordering
+                        panel.unsafeCount = 0
+                        panel.reveal()
+                    } else { panel.probe() }
+                } else {
+                    panel.probe()
                 }
             }
         }
