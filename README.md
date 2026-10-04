@@ -1,71 +1,117 @@
 English | [日本語](README.ja.md)
 
-# Transom — External Title Bar + App Menu
+# Transom
 
-The name Transom refers to the small window set above a door or window (a transom). It describes exactly what this app does: attach a separate bar above each target window.
+**Windows-style window controls and app menus, right above your Mac windows.**
 
-A menu-bar resident app that adds an app name, a window title, and an operable app menu above each normal Mac window. The original Mac menu bar, title bar, red/yellow/green buttons, and toolbar are all left in place.
+Transom is a menu-bar app that adds a separate title bar above ordinary macOS windows. It brings the app menu, minimize, maximize, and close controls to each window while keeping the original macOS menu bar, window buttons, and toolbar available. The bar shows the app name and menus; window titles appear in tooltips.
 
-**Status: 0.1.0-dev — a development build still undergoing real-machine verification.** This is more than a design document: it includes the app itself, AX-based menu execution, tracking, build scripts, and tests. The first version was authored on Linux; on 2026-09-16 it was type-checked, linked, unit-tested (34 common-logic tests with Swift Testing), and packaged as an .app on macOS 26 / Apple Silicon / Command Line Tools (Swift 6.4). **On-hardware GUI acceptance testing (bar display, menu execution, Z-order, Spaces) is not complete. This is not a guaranteed-working finished app or a signed and notarized binary.** See `docs/VALIDATION.md` and `docs/ACCEPTANCE.md` for details.
+The name comes from the small window above a door or window: a *transom*.
 
-## Getting started
+**Development preview · 0.1.0-dev · MIT license.** Build from source using the steps below. Compatibility depends on the app and macOS version; there is no Apple-notarized release. See [verification status](#verification-status) before using it with important work.
 
-Requirements: a Mac with a Swift 6 toolchain (Xcode or the matching Command Line Tools). The primary verification target is Apple Silicon / macOS 26. The minimum OS in the build settings is macOS 14, but that does not mean 14/15 have been verified on hardware.
+## Features
 
-In the extracted `Transom` folder, run from Terminal:
+- **Menus next to each window.** Open the app menu, File, Edit, and other menus through native macOS menus. Narrow bars collect extra menus under `»`.
+- **Window controls on the right.** Minimize, maximize/restore, and close. Maximize leaves room for the external bar instead of entering native full screen.
+- **Drag and double-click.** Drag empty bar space to move the window. Double-click it to maximize/restore; double-click its top 5 points to maximize vertically while keeping the width and horizontal position.
+- **Window context menu.** Right-click the bar for window controls, reserving space above that window, or excluding its app.
+- **Appearance settings.** Choose the bar color, active-window accent, line or fill style, line thickness, and bar height from the **TR** menu.
+- **Per-app exclusions and optional launch at login.** Manage both from **TR**. The interface follows the macOS language setting, with Japanese and English support.
+
+## Requirements
+
+| Item | Requirement |
+| --- | --- |
+| macOS | Build target: macOS 14 or later. Recorded hardware testing covers specific scenarios on macOS 26 and 27.0.1, not every supported OS. |
+| Hardware | Hardware verification was performed on Apple Silicon. Intel Macs have not been verified. |
+| Build tools | Swift 6 toolchain from Xcode or compatible Command Line Tools. The project uses Swift 5 language mode. |
+| Permission | Accessibility access for the built `Transom.app`. |
+
+There are no external Swift package dependencies. Homebrew and XcodeGen are not required.
+
+## Build and run
+
+Clone this repository, or download and extract its source ZIP. From Terminal:
 
 ```bash
-bash scripts/build-app.sh
+git clone https://github.com/digimaga/Transom.git
+cd Transom
+bash scripts/build-app.sh --release
 open dist/Transom.app
 ```
 
-After launch, **TR** appears at the top of the screen. Allow Transom under "System Settings → Privacy & Security → Accessibility". Edit the source by opening `Package.swift` in Xcode. There are no external Swift packages, Homebrew, or XcodeGen dependencies.
+If you downloaded the ZIP, open Terminal in the extracted `Transom` folder and start with the build command.
 
-**On first run, try moving a normal window down about 40 points from the top of the screen.** The bar is a fully external strip 30 points high. It sits behind the window and continues in the same colour down to 48 pt below the window's top edge; hidden behind the window itself, it fills the gap that would otherwise show through the rounded corners, so nothing is overlaid in front of the window. When there is no room above, the bar is hidden rather than overlapping the original buttons or content. The TR menu item "Reserve Bar Space on Frontmost Window" can also create room, for that one window only — it is the single operation that moves (and, if needed, shrinks) the target window. There is no bulk move or automatic resize at launch.
+1. Find **TR** in the macOS menu bar.
+2. Allow **Transom** in **System Settings → Privacy & Security → Accessibility**, then restart Transom if the bars do not appear.
+3. Move an ordinary window down to leave about 40 points below the menu bar. The default external bar is 30 points high and needs room above the window.
 
-## What's included
+Alternatively, choose **TR → Reserve Bar Space on Frontmost Window**. This explicitly moves, and if needed shrinks, just that window. Transom does not rearrange windows automatically at launch. Window movement and resizing also occur when you use its drag, maximize, or restore controls.
 
-- App name display (document names appear only in the tool tip), retrieval of the app menu and items such as "File"/"Edit", and a `»` overflow indicator on narrow bars.
-- Windows-style window buttons (minimize, maximize, close) at the right edge. Minimize and close press the window's own buttons via AX exactly once. Maximize fills the screen while leaving room for the bar, and pressing it again restores the previous frame. The buttons highlight on hover (close turns red), double-clicking the center of the bar's empty stretch toggles maximize. Double-clicking its top 5 points maximizes vertically while keeping the horizontal position and width; repeating it restores the height and vertical position. Right-clicking anywhere on the bar opens a Windows-style menu (minimize / maximize / close, reserve bar space, exclude this app).
-- Customizable bar colours. "Bar Color" in the TR menu recolours every bar's background, while "Active Bar" sets the focused-window marker: the system accent or any colour, shown as a top line or a filled bar. The line thickness is selectable from none (0) up to 5px; whenever a colour is painted, the title and button colours adjust automatically for contrast. "Bar Height" selects the strip height from 24 to 38px (30 is the default); text, glyphs and the app icon scale with it.
-- Per-app exclusion: "Exclude Frontmost App" hides the bar for one app, "Excluded Apps" lists every exclusion for individual removal, and "Clear All Exclusions" resets the list. "Launch at Login" registers Transom as a macOS login item.
-- Non-activating panels, dragging from the external title area, and tracking driven by both events and state verification.
-- Hierarchical menus via standard NSMenu and command execution via AXPress on the original app. The original Mac menu remains.
-- Re-verification of process/window generations, focus, document/selection state, and menu items. No automatic retries when a response is uncertain.
-- Dynamic lookup of exact window IDs and relative Z-order placement with post-hoc verification. If a correct correspondence cannot be confirmed, display and interaction stop.
-- Build scripts, 40 common-logic tests, an independent verification app TransomLab, review records, and an on-hardware checklist.
-- The app's own UI (status menu, buttons, error messages) supports Japanese and English, following the OS language setting.
+The build writes `dist/Transom.app`; it does not install into `/Applications` or enable launch at login. Use a fixed app location. If you move or rebuild it, check Accessibility permission for the copy you actually launch.
 
-## Important limitations
+### Signing and updates
 
-Native full-screen windows, sheets, and modal dialogs are not decorated. Small windows under 280 points wide are also out of scope. The bar is not shown when it cannot fully fit: at screen edges, on windows spanning multiple displays, or on windows extending off-screen.
+The build script uses a certificate named `Transom` from the keychain when available; otherwise it applies an ad-hoc signature. The script does not perform Apple notarization. No signing keys or certificates are included. Set `CODESIGN_IDENTITY` if you need a particular signing identity (`-` selects ad-hoc signing).
 
-Menus are limited to what apps expose through accessibility. Full compatibility for lazily generated items, custom UIs, and Option-key alternatives is not implemented. Even for normal items, execution is aborted if a change or ambiguity is detected. For apps whose menus cannot be retrieved correctly, use the original Mac menu.
+Quit Transom from **TR** before replacing or rebuilding the app. Signature changes can require granting Accessibility permission again. To stop using it, quit the app; disable **Launch at Login** first if you enabled it.
 
-Spaces support is a display-projection approach: "switch the external bar's display to match the target windows currently visible". It does not make the bar a true child window inside WindowServer. There is no guarantee of unified animation with Mission Control, Stage Manager, or Space transitions.
+## Permissions and privacy
 
-The mere existence of a private API does not guarantee ABI compatibility or behaviour. Nothing here disables SIP, injects code into other apps, captures the screen, sends network traffic, or logs keystrokes. This is not a Mac App Store configuration.
+Accessibility access lets Transom read window and menu information and perform the actions you select in other apps, including saving or closing documents. Those actions are handled by the target app and can change its data.
 
-## Build and test
+- Window titles, available document URLs, menu labels, and selection context are used in memory to identify and validate the target. Window titles can appear in the bar's tooltip.
+- Transom has no app network communication or analytics. It does not request Screen Recording or Input Monitoring, record keystrokes, disable SIP, or inject code into other apps.
+- Appearance settings, enabled state, and excluded app identifiers are stored locally in macOS preferences. Runtime logs record status, numeric window IDs, and timing; they do not include document names, document URLs, menu labels, or selected text.
+- **TR → Copy Diagnostics (No Document Names)** copies version, OS, permission/capability flags, and counts to your clipboard. Nothing is uploaded automatically. Review the contents before sharing them.
+
+## Known limitations
+
+- Native full-screen windows, sheets, modal dialogs, and windows smaller than 280 points wide or 120 points high are excluded.
+- If there is not enough vertical room for the bar, it stays hidden instead of covering the original controls or content. Windows extending sideways or downward off-screen can keep their bars; the off-screen portion is clipped. Multiple-display behavior still needs hardware testing.
+- Menus depend on what each app exposes through Accessibility. Lazily generated menus, custom controls, and Option-key alternatives may be unavailable. Use the original macOS menu for those items.
+- An action is refused if Transom cannot verify the exact window, focus, or menu context. It does not guess by title or automatically retry a command with an uncertain result.
+- Spaces support follows the windows currently visible. The bar is a separate window, so unified animations with Mission Control, Stage Manager, or Space transitions are not guaranteed.
+- Exact window identification uses a private macOS API through `TransomBridge`. OS updates can break compatibility. This is not a Mac App Store build.
+- Maximize/restore depends on the target app's size constraints. Restore frames are kept only while Transom is running and the window remains tracked.
+
+## Troubleshooting
+
+| Symptom | First checks |
+| --- | --- |
+| No bars | Check Accessibility permission for the launched app, the enabled setting in TR, app exclusions, and free space above a normal window. |
+| A menu is missing or an action is refused | Try the original macOS menu. Collect Transom diagnostics and a minimal reproduction using a test document. |
+| Permission stops working after rebuilding | Quit the old app, check the current app's location and Accessibility entry, then launch that copy again. |
+| Build fails | Confirm `xcrun swift --version` reports Swift 6 or later and that the selected Xcode/Command Line Tools installation is usable. Include the first build error in a report. |
+
+For reports, see [contributing and bug reports](CONTRIBUTING.md). Remove personal data from logs and screenshots before posting.
+
+## Verification status
+
+The latest recorded local verification, on **2026-10-02**, passed **44 tests across 7 suites**, built both apps, and checked specific GUI scenarios on macOS 27.0.1 / Apple Silicon. Earlier records cover additional scenarios on macOS 26. These are results for the recorded environments and actions, not a guarantee for every app or OS.
+
+Multiple displays, Intel hardware, and a complete acceptance rerun on macOS 27 remain unverified. See the dated [validation records](docs/VALIDATION.md) and [acceptance checklist](docs/ACCEPTANCE.md) for individual results. `BUILD_STATUS.json` is the historical 2026-09-16 build snapshot, not the current compatibility summary.
+
+## Development
 
 ```bash
-# Mac: compile both apps + common tests + configuration checks
+# Build both apps, run common-logic tests, and check source/configuration.
 bash scripts/verify.sh
 
-# Optimized build
-bash scripts/build-app.sh --release
-
-# Verification fixture for another app
+# Build the separate app used for manual window/menu verification.
 bash scripts/build-app.sh --lab
 open dist/TransomLab.app
 ```
 
-`build-app.sh` signs with the self-signed `Transom` certificate when it exists in the login keychain, and falls back to ad-hoc signing otherwise. Apple notarization is not performed. Changing the signature or rebuilding may require re-granting accessibility permission. Quit the running old version from the TR menu before replacing it. Launch from a fixed `.app` location, and do not mix up the TCC permission target between `swift run`, Xcode runs, and the bundled app.
+TransomLab creates test windows. Its **verification save** command writes fixture files and an event log under `~/Library/Application Support/TransomLab/`. It is a separate app and is not included in the normal Transom bundle.
 
-To force a specific identity (including `-` for ad-hoc), set the `CODESIGN_IDENTITY` environment variable. No signing keys or certificates are included.
+CI builds and unit tests do not exercise live Accessibility, focus, or Spaces. Use the [acceptance checklist](docs/ACCEPTANCE.md) for hardware testing, and distinguish new observations from earlier records.
 
-## Development handoff
+- [Contributing and bug reports / 開発参加・不具合報告](CONTRIBUTING.md)
+- [Architecture](docs/ARCHITECTURE.md), [development handoff](docs/HANDOFF.md), and [review notes](docs/REVIEW.md) — Japanese developer documents, including historical notes.
+- [Agent development rules](AGENTS.md)
 
-`docs/HANDOFF.md` is the on-hardware work order. `docs/REVIEW.md` lists fixed issues and unverified risks; `docs/ACCEPTANCE.md` gives the acceptance criteria. When handing off to Codex / Claude Code and similar agents, have them read the root `AGENTS.md` and these documents.
+## License
 
-License: MIT. Referenced APIs and prior implementations are listed in `docs/SOURCES.md`.
+[MIT](LICENSE). API references and prior projects consulted during development are listed in [Sources](docs/SOURCES.md).
