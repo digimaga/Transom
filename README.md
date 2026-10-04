@@ -10,6 +10,12 @@ The name comes from the small window above a door or window: a *transom*.
 
 **Development preview · 0.1.0-dev · MIT license.** Build from source using the steps below. Compatibility depends on the app and macOS version; there is no Apple-notarized release. See [verification status](#verification-status) before using it with important work.
 
+## Screenshot
+
+![Transom’s external menu bar above a Safari window](docs/images/transom-safari-reference.png)
+
+*Appearance reference: Safari with Transom, captured on 2026-10-04. Appearance may vary with settings and macOS version.*
+
 ## Features
 
 - **Menus next to each window.** Open the app menu, File, Edit, and other menus through native macOS menus. Narrow bars collect extra menus under `»`.
