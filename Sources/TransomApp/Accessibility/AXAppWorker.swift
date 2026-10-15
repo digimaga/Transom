@@ -22,6 +22,7 @@ final class AXAppWorker {
     private var presence = PresenceTracker()
     private var headings: [MenuHeading] = []
     private var headingsReadAt: TimeInterval = 0
+    func invalidateHeadings() { headingsReadAt = 0 }
     var menus: [UUID: AXMenuSession] = [:]
 
     init(descriptor: ApplicationDescriptor) {
@@ -139,10 +140,11 @@ final class AXAppWorker {
             }
         }
         let known = Set(records.values.map(\.token))
-        let changes = presence.reconcile(known: known, observed: complete ? seen : nil)
+        let listed = Set(records.values.compactMap { record in
+            elements.contains { CFEqual($0, record.element) } ? record.token : nil
+        })
+        let changes = presence.reconcile(known: known, observed: listed, refreshed: seen)
         hidden.formUnion(changes.hidden)
-        // On partial scans, freshly refreshed windows can still be shown.
-        if !complete { hidden.subtract(seen) }
         for token in changes.removed {
             if let old = records.removeValue(forKey: token.windowID) { unobserveWindow(old.element) }
         }
@@ -297,9 +299,6 @@ final class AXAppWorker {
                  completion: @escaping @MainActor (Result<Rect, Error>) -> Void) {
         let sizeChanges = abs(expected.height - desired.height) > 0.5 || abs(expected.width - desired.width) > 0.5
         let grows = desired.width > expected.width + 0.5 || desired.height > expected.height + 0.5
-        let intermediate = grows
-            ? Rect(x: desired.x, y: desired.y, width: expected.width, height: expected.height)
-            : Rect(x: expected.x, y: expected.y, width: desired.width, height: desired.height)
         submit({ worker in
             let record = try worker.validateFocus(token)
             guard permit.isValid(), worker.lifetime.isValid(), desired.isValid,
@@ -311,17 +310,21 @@ final class AXAppWorker {
             // Grow: move first. Shrink: resize first. Neither write is retried or rolled back.
             if grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
             else if sizeChanges { try AX.setSize(record.element, desired) }
+            return try AX.frame(record.element)
         }) { result in
-            if case .failure(let error) = result { completion(.failure(error)); return }
+            guard case .success(let actualStep1) = result else {
+                if case .failure(let error) = result { completion(.failure(error)) }
+                return
+            }
             // macOS 27 AX reports the destination while AppKit is still animating the first write.
             // Resizing during that move clamps the height against the intermediate screen position.
             // Confirm its actual WindowServer frame before issuing the second, single AX write.
-            self.awaitPlacement(token, frame: intermediate, tolerance: 0.5, permit: permit) { result in
+            self.awaitPlacement(token, frame: actualStep1, tolerance: 0.5, permit: permit) { result in
                 if case .failure(let error) = result { completion(.failure(error)); return }
                 self.submit({ worker in
                     let record = try worker.validateFocus(token)
                     guard permit.isValid(), worker.lifetime.isValid(),
-                          try AX.frame(record.element).approximatelyEquals(intermediate, tolerance: 2) else {
+                          try AX.frame(record.element).approximatelyEquals(actualStep1, tolerance: 2) else {
                         throw TransomError.stale
                     }
                     if grows {
@@ -329,15 +332,19 @@ final class AXAppWorker {
                     } else {
                         try AX.setPosition(record.element, Point(x: desired.x, y: desired.y))
                     }
+                    return try AX.frame(record.element)
                 }) { result in
-                    if case .failure(let error) = result { completion(.failure(error)); return }
-                    self.awaitPlacement(token, frame: desired, tolerance: 2, permit: permit) { result in
+                    guard case .success(let actualStep2) = result else {
+                        if case .failure(let error) = result { completion(.failure(error)) }
+                        return
+                    }
+                    self.awaitPlacement(token, frame: actualStep2, tolerance: 2, permit: permit) { result in
                         if case .failure(let error) = result { completion(.failure(error)); return }
                         self.submit({ worker in
                             let record = try worker.validateFocus(token)
                             guard permit.isValid() else { throw TransomError.cancelled }
                             let actual = try AX.frame(record.element)
-                            guard actual.approximatelyEquals(desired, tolerance: 2) else {
+                            guard actual.approximatelyEquals(actualStep2, tolerance: 2) else {
                                 throw TransomError.unavailable(NSLocalizedString("アプリが配置を補正しました。実際の配置を確認してください。", comment: "Error: app adjusted the placement, check the actual position"))
                             }
                             return actual

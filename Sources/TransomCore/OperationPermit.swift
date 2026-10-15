@@ -46,11 +46,16 @@ public struct PresenceTracker: Sendable {
     private var missing: [WindowToken: Int] = [:]
     public init() {}
     public mutating func reconcile(known: Set<WindowToken>, observed: Set<WindowToken>?,
+                                    refreshed: Set<WindowToken>? = nil,
                                     threshold: Int = 2) -> (hidden: Set<WindowToken>, removed: Set<WindowToken>) {
         guard let observed else { return (known, []) }
+        let refreshed = refreshed ?? observed
         var hidden = Set<WindowToken>(), removed = Set<WindowToken>()
         for token in known {
-            if observed.contains(token) { missing[token] = nil }
+            if observed.contains(token) {
+                missing[token] = nil
+                if !refreshed.contains(token) { hidden.insert(token) }
+            }
             else {
                 hidden.insert(token)
                 missing[token, default: 0] += 1

@@ -16,6 +16,16 @@ public enum Geometry {
     public static func flip(_ p: Point, primaryHeight: Double) -> Point {
         Point(x: p.x, y: primaryHeight - p.y)
     }
+    /// Keeps a dragged header reachable on the physical screen under the pointer. Screen frame arrays
+    /// share their NSScreen ordering; pointers outside every full frame preserve the requested point.
+    public static func dragPoint(_ desired: Point, mouse: Point, fullFrames: [Rect],
+                                 visibleFrames: [Rect], headerHeight: Double) -> Point {
+        for (full, visible) in zip(fullFrames, visibleFrames) where
+            mouse.x >= full.x && mouse.x <= full.maxX && mouse.y >= full.y && mouse.y <= full.maxY {
+            return Point(x: desired.x, y: max(desired.y, visible.y + headerHeight))
+        }
+        return desired
+    }
     public static func bestScreen(for window: Rect, visibleFrames: [Rect]) -> Rect? {
         visibleFrames.max { a, b in
             (a.intersection(window)?.area ?? 0) < (b.intersection(window)?.area ?? 0)

@@ -1,5 +1,24 @@
 # 検証結果 — 作成環境
 
+## 2026-10-15：Fable相談を踏まえた状態管理・ウィンドウ操作のレビュー修正
+
+環境：macOS 27.0.1（26A434）／Apple M1 Max・arm64／Xcode 27.0（27A266a）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。
+
+Fable 5.1（実行結果の `canonicalModel=claude-fable-5-1` を確認）へ読み取り専用で相談し、親レビューで採用した8件を根本修正した。対象と不採用案の理由は `docs/REVIEW.md` の同日記録を参照。独立した最終差分レビューでは追加の確定P0〜P2指摘はなかった。
+
+確認した結果：
+
+- 修正前の `bash scripts/verify.sh` は44件／7 suite成功。修正後は53件／10 suite成功し、Transom・TransomLabのコンパイル、ソース配置・plist・シェル構文の確認も成功した。
+- 旧HEADのジェスチャ処理と修正後の処理へ同じ1→2→3クリック列を入力した。旧コードはダブルクリック判定2回で期待値1回に失敗し、修正後は1回で成功した。実マウスのGUI操作とは区別した共通ロジックの再現確認である。
+- 新規9テストで、一覧に存在するが属性更新に失敗した窓の保持と実際に消えた窓の除去、トリプルクリック、画面上部・複数画面でのドラッグ座標、アプリに補正された最大化枠からの復元と縦・通常最大化の履歴分離を確認した。
+- `bash scripts/build-app.sh --lab` 成功。稼働中の本体を保護するため、本体はHEADの一時コピーへ担当ソース・テスト差分を重ねて `bash scripts/build-app.sh` を実行し、成功した。両アプリの `codesign --verify --strict` が成功した。
+- 修正版本体を `dist/review-20261015/Transom.app` に保存し、コピー先でも署名検証に成功した。既存の `dist/Transom.app` と稼働中プロセスは差し替え・再起動していない。ビルド成果物と一時ログはGitに含めない。
+- 既存本体のバー表示、検証用Labの起動・終了を確認した。操作ツールで対応する外付けバーを安定して選択できず、メニュー展開の成功は確認できなかった。修正版本体は未起動であり、この操作を修正版のGUI受入合格とはしていない。
+
+未検証：サイズ制約のある実アプリにおけるAX取得値とWindowServer反映後の枠の一致・最大化からの復元、実マウスでのトリプルクリックとドラッグ、動的メニュー変更・メニュー要求の再入、実アプリでの部分的AX取得失敗、複数ディスプレイ・Spacesを含む `docs/ACCEPTANCE.md` 全項目の再実施。共通ロジックの成功をこれらの実機成功へ読み替えない。
+
+証拠：`/tmp/transom-review-20261015-baseline.log`、`/tmp/transom-review-20261015-final-verify.log`、`/tmp/transom-review-20261015-gesture-repro.log`、`/tmp/transom-review-20261015-final-app-build.log`、`/tmp/transom-review-20261015-lab-build.log`、`/tmp/transom-review-20261015-fable-report.txt`。
+
 ## 2026-10-02：上端ダブルクリックによる縦方向最大化
 
 環境：macOS 27.0.1（26A434）／M1 MacBook Pro・arm64／Xcode 27.0（27A266a）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。実機確認時の使用可能領域は(0,33,1728x994)、外付けバー30pt。

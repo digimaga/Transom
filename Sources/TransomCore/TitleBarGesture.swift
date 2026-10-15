@@ -20,7 +20,7 @@ public struct TitleBarGesture: Sendable {
     public init() {}
 
     public mutating func mouseDown(clickCount: Int) -> [Action] {
-        if clickCount >= 2 {
+        if clickCount == 2 {
             phase = .pendingDoubleClick
             return []
         }

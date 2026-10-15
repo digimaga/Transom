@@ -31,6 +31,10 @@ final class AXMenuSession {
     }
 }
 
+private enum HeadingMismatch: Error {
+    case index, title
+}
+
 extension AXAppWorker {
     func readHeadings(budget: AXBudget) throws -> [MenuHeading] {
         guard let bar = AX.element(try AX.value(application, kAXMenuBarAttribute, budget: budget)) else { return [] }
@@ -74,7 +78,13 @@ extension AXAppWorker {
             let witness = try worker.witness(target)
             let session = AXMenuSession(target: target, witness: witness, permit: permit)
             let reader = AXMenuReader(application: worker.application, session: session)
-            let entries = try reader.read(headings: requested)
+            let entries: [MenuEntry]
+            do {
+                entries = try reader.read(headings: requested)
+            } catch is HeadingMismatch {
+                worker.invalidateHeadings()
+                throw TransomError.stale
+            }
             guard permit.isValid() else { throw TransomError.cancelled }
             // Focus/document state may have changed while the tree was being fetched.
             try worker.validateWitness(session)
@@ -141,12 +151,12 @@ private final class AXMenuReader {
         for heading in headings {
             guard tops.indices.contains(heading.index) else {
                 AXAppWorker.focusLogger.info("メニュー見出しの照合に失敗しました。理由コード: heading-index")
-                throw TransomError.stale
+                throw HeadingMismatch.index
             }
             let top = tops[heading.index]
             guard try AX.string(top, kAXTitleAttribute, budget: budget) == heading.title else {
                 AXAppWorker.focusLogger.info("メニュー見出しの照合に失敗しました。理由コード: heading-title")
-                throw TransomError.stale
+                throw HeadingMismatch.title
             }
             let role = try AX.string(top, kAXRoleAttribute, budget: budget) ?? ""
             let step = AXPathStep(index: heading.index, element: top, role: role, title: heading.title)

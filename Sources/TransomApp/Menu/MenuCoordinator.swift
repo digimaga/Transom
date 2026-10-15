@@ -71,8 +71,14 @@ final class MenuCoordinator {
                 // Screen coordinates keep the native menu independent of the non-key header.
                 let screenAnchor = panel.convertPoint(toScreen: panel.headerView.convert(anchor, to: nil))
                 menu.popUp(positioning: nil, at: screenAnchor, in: nil)
+                // The tracking loop can start another request. Finish only this request's session;
+                // its successor owns activeMenu, target and permit now.
+                guard self.requestID == request else {
+                    worker.discardMenu(model.sessionID)
+                    return
+                }
                 self.activeMenu = nil
-                guard self.requestID == request, permit.isValid(), self.isTargetValid?(target) == true,
+                guard permit.isValid(), self.isTargetValid?(target) == true,
                       NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid,
                       let command = selection.commandID else {
                     worker.discardMenu(model.sessionID)

@@ -50,9 +50,9 @@ final class AppController: NSObject, NSMenuDelegate {
     private var reservePermit: OperationPermit?
     private var reserveTarget: WindowToken?
     /// Frames recorded by the header's maximize button, restored by pressing it again.
-    private var restoreFrames: [WindowToken: Rect] = [:]
+    private var restoreFrames: [WindowToken: MaximizeHistory] = [:]
     /// Independent vertical restoration, so using the maximize button does not overwrite it.
-    private var verticalRestoreFrames: [WindowToken: Rect] = [:]
+    private var verticalRestoreFrames: [WindowToken: MaximizeHistory] = [:]
     private var extraPermits: [OperationPermit] = []
     private var lastFrontmostPID: Int32?
     /// nil means the bar follows the system accent; a stored colour overrides it for the focused window.
@@ -113,7 +113,11 @@ final class AppController: NSObject, NSMenuDelegate {
         // Place the header on the frame the window just took, in the same frame when possible. The regular
         // metadata pass is not forced per step (it would only add main-thread work during the drag).
         drag.onMoved = { [weak self] token, frame in self?.follow([token.windowID: frame]) }
-        drag.onFinished = { [weak self] token in self?.dirtyApplications.insert(token.pid); self?.requestMetadata() }
+        drag.onFinished = { [weak self] token in
+            self?.dirtyApplications.insert(token.pid)
+            // cancel() can be called while render() is removing a panel. Refresh after it returns.
+            MainRunLoop.perform { [weak self] in self?.requestMetadata() }
+        }
         AXObserverHub.shared.onChange = { [weak self] pid in self?.dirtyApplications.insert(pid) }
         tracker.windowIDs = { [weak self] in self?.trackedWindowIDs() ?? [] }
         tracker.onFrames = { [weak self] frames in self?.follow(frames) }
@@ -480,8 +484,9 @@ final class AppController: NSObject, NSMenuDelegate {
             return
         }
         menus.cancel(); drag.cancel(); reservePermit?.cancel()
-        let restoring = actual.approximatelyEquals(maximized, tolerance: 2)
-        guard let desired = restoring ? restoreFrames[token] : maximized else {
+        let history = restoreFrames[token]
+        let restoring = actual.approximatelyEquals(maximized, tolerance: 2) || history?.matches(actual) == true
+        guard let desired = restoring ? history?.restorationFrame(from: actual) : maximized else {
             status(NSLocalizedString("元のサイズが記録されていないため戻せません。ドラッグで調整してください。",
                                       comment: "Status: no recorded size to restore to"))
             return
@@ -489,9 +494,9 @@ final class AppController: NSObject, NSMenuDelegate {
         reposition(token, worker: worker, actual: actual, desired: desired) { [weak self] result in
             guard let self else { return }
             switch result {
-            case .success:
-                if restoring { self.restoreFrames[token] = nil } else { self.restoreFrames[token] = actual }
-                self.status(restoring
+            case .success(let applied):
+                self.restoreFrames[token] = restoring ? nil : MaximizeHistory(original: actual, applied: applied)
+                self.statusPlacement(applied, desired: desired, success: restoring
                     ? NSLocalizedString("元のサイズに戻しました。", comment: "Status: window restored to its original size")
                     : NSLocalizedString("最大化しました。", comment: "Status: window maximized"))
             case .failure(let error): self.status(error.localizedDescription)
@@ -516,11 +521,10 @@ final class AppController: NSObject, NSMenuDelegate {
         }
         menus.cancel(); drag.cancel(); reservePermit?.cancel()
         let vertical = Rect(x: actual.x, y: filled.y, width: actual.width, height: filled.height)
-        let restoring = actual.approximatelyEquals(vertical, tolerance: 2)
+        let history = verticalRestoreFrames[token]
+        let restoring = actual.approximatelyEquals(vertical, tolerance: 2) || history?.matches(actual, verticalOnly: true) == true
         // Restoring changes only the vertical axis, including after a horizontal drag or resize.
-        let restored = verticalRestoreFrames[token].map {
-            Rect(x: actual.x, y: $0.y, width: actual.width, height: $0.height)
-        }
+        let restored = history?.restorationFrame(from: actual, verticalOnly: true)
         guard let desired = restoring ? restored : vertical else {
             status(NSLocalizedString("元のサイズが記録されていないため戻せません。ドラッグで調整してください。",
                                       comment: "Status: no recorded size to restore to"))
@@ -529,9 +533,9 @@ final class AppController: NSObject, NSMenuDelegate {
         reposition(token, worker: worker, actual: actual, desired: desired) { [weak self] result in
             guard let self else { return }
             switch result {
-            case .success:
-                if restoring { self.verticalRestoreFrames[token] = nil } else { self.verticalRestoreFrames[token] = actual }
-                self.status(restoring
+            case .success(let applied):
+                self.verticalRestoreFrames[token] = restoring ? nil : MaximizeHistory(original: actual, applied: applied)
+                self.statusPlacement(applied, desired: desired, success: restoring
                     ? NSLocalizedString("元のサイズに戻しました。", comment: "Status: window restored to its original size")
                     : NSLocalizedString("上下いっぱいに広げました。", comment: "Status: window expanded to full height"))
             case .failure(let error): self.status(error.localizedDescription)
@@ -562,8 +566,8 @@ final class AppController: NSObject, NSMenuDelegate {
         reposition(token, worker: worker, actual: actual, desired: desired) { [weak self] result in
             guard let self else { return }
             switch result {
-            case .success:
-                self.status(NSLocalizedString("バー用の空間を確保しました。",
+            case .success(let applied):
+                self.statusPlacement(applied, desired: desired, success: NSLocalizedString("バー用の空間を確保しました。",
                                                comment: "Status: reserved bar space on the clicked window"))
             case .failure(let error): self.status(error.localizedDescription)
             }
@@ -594,6 +598,10 @@ final class AppController: NSObject, NSMenuDelegate {
                 completion(result)
             }
         }
+    }
+    private func statusPlacement(_ applied: Rect, desired: Rect, success: String) {
+        status(applied.approximatelyEquals(desired, tolerance: 2) ? success
+            : NSLocalizedString("アプリが配置を補正しました。実際の配置を確認してください。", comment: "Status: app adjusted the requested placement"))
     }
     private func removePanel(_ token: WindowToken) {
         menus.cancel(ifTarget: token)
@@ -852,12 +860,12 @@ final class AppController: NSObject, NSMenuDelegate {
         reservePermit = permit; reserveTarget = snapshot.token
         // This menu item is the explicit authorization to move/resize this one window.
         worker.reserve(snapshot.token, expected: actual, desired: desired, permit: permit) { [weak self] result in
-            guard let self else { return }
+            guard let self, self.reservePermit === permit else { return }
             permit.cancel()
             self.reserveTarget = nil
             switch result {
-            case .success:
-                self.status(NSLocalizedString("最前面の1枚にバー用の空間を確保しました。",
+            case .success(let applied):
+                self.statusPlacement(applied, desired: desired, success: NSLocalizedString("最前面の1枚にバー用の空間を確保しました。",
                                                comment: "Status: reserved bar space on the frontmost window"))
             case .failure(let error): self.status(error.localizedDescription)
             }

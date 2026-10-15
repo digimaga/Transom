@@ -60,12 +60,11 @@ final class DragCoordinator {
     func moved() {
         guard let session, let geometry = ScreenGeometry.current() else { return }
         let mouse = geometry.globalMouse()
-        var point = Point(x: session.origin.x + mouse.x - session.initialMouse.x,
-                          y: session.origin.y + mouse.y - session.initialMouse.y)
-        // When dragging this header, keep the header itself reachable on the destination screen.
-        if let screen = geometry.visibleFrames.first(where: {
-            mouse.x >= $0.x && mouse.x <= $0.maxX && mouse.y >= $0.y && mouse.y <= $0.maxY
-        }) { point.y = max(point.y, screen.y + headerHeight) }
+        let desired = Point(x: session.origin.x + mouse.x - session.initialMouse.x,
+                            y: session.origin.y + mouse.y - session.initialMouse.y)
+        // Locate the physical screen first, then use its usable top edge for the header constraint.
+        let point = Geometry.dragPoint(desired, mouse: mouse, fullFrames: geometry.fullFrames,
+                                       visibleFrames: geometry.visibleFrames, headerHeight: headerHeight)
         session.desired = point
         pump()
     }
