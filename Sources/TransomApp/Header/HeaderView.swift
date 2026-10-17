@@ -314,7 +314,7 @@ final class HeaderView: NSView {
             button.attributedTitle = NSAttributedString(string: button.title, attributes:
                 [.font: button.font ?? .systemFont(ofSize: fontSize), .foregroundColor: text])
         }
-        for button in [minimizeButton, maximizeButton, closeButton] { button.normalTint = tinted ? text : nil }
+        for button in [minimizeButton, maximizeButton, closeButton] { button.normalTint = (tinted || baseColor != nil) ? text : nil }
     }
     private func readableTextColor(on background: NSColor) -> NSColor {
         guard let color = background.usingColorSpace(.sRGB) else { return .labelColor }

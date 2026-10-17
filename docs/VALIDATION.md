@@ -1,5 +1,21 @@
 # 検証結果 — 作成環境
 
+## 2026-10-18：取消後のAX送信とカスタム背景色のレビュー修正
+
+環境：macOS 27.0.1（26A434）／Apple M1 Max・arm64／Xcode 27.1（27A9275）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。
+
+確認した結果：
+
+- 修正前後の `bash scripts/verify.sh` 成功。53件／10 suite、Transom・TransomLabのコンパイル、ソース配置・plist・シェル構文を確認した。追加で英語Localizable.stringsの `plutil -lint` と `git diff --check` も成功した。
+- 旧commit `ec9ecd3d2e92b3634fe06eb108d7593bda0250d4` と修正版のAXAppWorker実ソースを同じ検証ハーネスでコンパイルした。CoreとRuntimeModelsも実ソースを使用し、AXとWindowServerはテスト用応答へ置換、直接のAXUIElementPerformActionだけ呼出先をFakeへ変更した。focus・move・reserveの制御フローは変更していない。読み取りの戻り直前にpermitまたはworker lifetimeを取り消す12ケースで、旧版は取消後に1〜4回の副作用を送信し、修正版はすべて0回。有効操作3ケースも成功し、修正版は15/15成功した。実AX IPCや実アプリへの操作は行っていない。
+- 旧版と修正版のHeaderView実ソースをAppKitでコンパイルし、3ボタンのcontentTintColorとホバーイベントを比較した。黒・白背景、フォーカス切替、閉じるホバーと解除、システム標準色の7ケースで旧版は4件失敗、修正版は7/7成功した。実マウスや画面上の描画の確認ではない。
+- 担当差分を含む一時コピーで `bash scripts/build-app.sh` と `bash scripts/build-app.sh --lab` が成功。両アプリは `Authority=Transom`、`codesign --verify --strict` 成功。成果物は `dist/review-20261018/` に保存し、コピー後も署名を確認した。
+- 通常版 `dist/Transom.app` と稼働中プロセスは差し替え・再起動していない。検証用ソース、バイナリ、ログはGitに含めない。
+
+未検証：修正版を起動した実アプリでのAX応答遅延中の取消、操作ボタンの画面描画と実マウス、複数ディスプレイ・Spacesを含む `docs/ACCEPTANCE.md` の全受入項目。送信済みIPCの取消や最後の許可確認と送信の間の原子性は保証しない。
+
+証拠：`/tmp/transom-review-20261018-baseline.log`、`/tmp/transom-review-20261018-final-verify.log`、`/tmp/transom-review-20261018-regression/{old,new}.log`（再実行は同ディレクトリの `run.sh`）、`/tmp/transom-review-20261018-header/{baseline,fixed}.log`、`/tmp/transom-review-20261018-app-build.log`、`/tmp/transom-review-20261018-lab-build.log`。
+
 ## 2026-10-15：Fable相談を踏まえた状態管理・ウィンドウ操作のレビュー修正
 
 環境：macOS 27.0.1（26A434）／Apple M1 Max・arm64／Xcode 27.0（27A266a）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。

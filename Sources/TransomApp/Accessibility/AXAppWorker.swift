@@ -207,8 +207,10 @@ final class AXAppWorker {
             // AX IPC only on this per-app worker queue, never on MainActor.
             // A refusal here is not fatal: validateFocus below remains the only gate.
             if AX.settable(worker.application, kAXFrontmostAttribute) {
+                guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
                 try? AX.set(worker.application, kAXFrontmostAttribute, kCFBooleanTrue as CFTypeRef)
             }
+            guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
             let error = AXUIElementPerformAction(record.element, kAXRaiseAction as CFString)
             guard error == .success else { throw TransomError.ax(error.rawValue) }
             // AXRaise can succeed while a sibling stays focused (observed on macOS 27).
@@ -216,9 +218,11 @@ final class AXAppWorker {
             // AXFocusedWindow is read-only. Request the exact window as main, then verify
             // focused identity below; this never substitutes a different window or retries a command.
             if AX.settable(record.element, kAXMainAttribute) {
+                guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
                 try AX.set(record.element, kAXMainAttribute, kCFBooleanTrue as CFTypeRef)
             }
             if AX.settable(worker.application, kAXFocusedWindowAttribute) {
+                guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
                 try AX.set(worker.application, kAXFocusedWindowAttribute, record.element)
             }
             let deadline = ProcessInfo.processInfo.systemUptime + 0.6
@@ -259,6 +263,7 @@ final class AXAppWorker {
                 throw TransomError.cancelled
             }
             if thorough, !AX.settable(record.element, kAXPositionAttribute) { throw TransomError.cancelled }
+            guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
             let validated = ProcessInfo.processInfo.systemUptime
             try AX.setPosition(record.element, point)
             let actual = try AX.frame(record.element)
@@ -307,6 +312,7 @@ final class AXAppWorker {
             if sizeChanges, !AX.settable(record.element, kAXSizeAttribute) {
                 throw TransomError.unavailable(NSLocalizedString("このウィンドウはサイズを変更できません。", comment: "Error: window's size can't be changed"))
             }
+            guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
             // Grow: move first. Shrink: resize first. Neither write is retried or rolled back.
             if grows { try AX.setPosition(record.element, Point(x: desired.x, y: desired.y)) }
             else if sizeChanges { try AX.setSize(record.element, desired) }
@@ -327,6 +333,7 @@ final class AXAppWorker {
                           try AX.frame(record.element).approximatelyEquals(actualStep1, tolerance: 2) else {
                         throw TransomError.stale
                     }
+                    guard permit.isValid(), worker.lifetime.isValid() else { throw TransomError.cancelled }
                     if grows {
                         if sizeChanges { try AX.setSize(record.element, desired) }
                     } else {
