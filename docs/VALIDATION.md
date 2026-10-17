@@ -1,5 +1,34 @@
 # 検証結果 — 作成環境
 
+## 2026-10-18：別プロセスのウィンドウとの一体移動を検証
+
+目的：現在の位置追跡を置き換え、WindowServerに対象窓と外付けバーを一緒に移動させられるかを独立した検証アプリで調べた。本体の実装変更ではない。
+
+環境：macOS 27.0.1（26A434）／Apple M1 Max・arm64／Xcode 27.1／Swift 6.4・言語モード5。SIP有効。注入・権限追加・他プロセスのconnection IDの使用は行わず、各プロセスは自身のconnectionだけを使用した。通常版Transomは同じPIDで継続し、実行ファイルのSHA-256も検証前後で一致した。
+
+方法：通常のNSWindowと独立NSPanelを作り、対象窓だけを60段階で右240pt・上120ptへ動かした。対象幅を260ptにして通常版Transomのバー表示対象から外した。別プロセス条件では、起動した子プロセスが自身の窓を作成・移動し、バー側がその正確なwindow IDとPIDを照合した。バーの位置を追いかける処理は入れていない。MainActorでCATransaction.flush後、両窓のCG枠を1回の問い合わせで取得して相対位置の変化を測定した。タイマー設定は240Hzだが、実際のサンプル数は条件ごとに異なる。新規窓の表示アニメーションは検証アプリ内で無効にした。
+
+|条件|対象窓の移動方法|バーの最終移動量（CG座標）|相対位置のずれ|サンプル数|
+|---|---|---|---|---|
+|同一プロセス・公開addChildWindow|NSWindow.setFrameOrigin|(+240, -120)pt|全サンプル0pt|106|
+|同一プロセス・非公開movement group|CGSMoveWindowWithGroup|(+240, -120)pt|全サンプル0pt|144|
+|別プロセス・非公開movement group|所有プロセスからCGSMoveWindowWithGroup|(0, 0)pt|最終X=240pt、Y=120pt|134|
+|別プロセス・movement＋ordering group|所有プロセスからCGSMoveWindowWithGroup|(0, 0)pt|最終X=240pt、Y=120pt|155|
+
+表の全条件で対象窓自体は(+240, -120)pt移動した。非公開APIの登録・解除とグループ移動60回はすべて戻り値0だったが、別プロセス条件ではバーの観測座標は全サンプルで不変だった。APIの戻り値0だけを連動成功とは扱わない。公開addChildWindowは戻り値による成否判定ではなく、実枠の計測を成功の根拠とした。
+
+追加比較：NSWindow.setFrameOriginによる単体移動では、movement groupだけの同一プロセス条件でもバーは動かなかった。別プロセスのmovementのみ・orderingのみ・両方の各条件もバーは不動。移動方法で結果が変わるため、これらをグループ移動の比較と混同しない。自動移動の有効な計測は計8条件。独立レビューで親子IDの順・ABI参照・PID照合・CG同時取得・結果の解釈を確認した。
+
+通常のタイトルバードラッグも操作ツールで2回試みたが、対象窓自体の座標が変わらず、移動試験として未成立だった。静止した2窓のずれ0ptを追従成功には数えていない。初期の計測コードで発生したCFArrayへのIDの渡し方・CGFloatの型変換の不備は修正してから上記を測定した。
+
+結論：このOS・検証アプリで、バー所有プロセスの通常connectionから登録する経路では、別プロセス間の一体移動を実証できなかった。この方式を本体へ採用する根拠は得られていない。グループ構成自体のreadbackはなく、権限制約・connection単位の登録・そのほかの原因のどれかは未特定。「macOSでは不可能」「SIPが原因」とは断定しない。
+
+未検証：実マウスによるネイティブドラッグ、Safari／Chromeそのもの、リサイズ、Spaces、複数画面、別OS。検証用ウィンドウ・プロセスは終了済み。通常版のバイナリ・設定・起動状態と普段のブラウザは変更していない。
+
+証拠：Git非追跡の `dist/attachment-probe-20261018/` に独立ハーネス、ビルド手順、環境記録、全座標、`verified-summary.json` を保存。表は `run3-public` と `run4-{group-local,group-cross,both-cross}`。ドラッグ試行は `run5-manual-both-cross`・`run6-manual-both-cross` で、静止条件として別扱い。
+
+API宣言・引数順の確認先： [Apple addChildWindow](https://developer.apple.com/documentation/appkit/nswindow/addchildwindow%28_%3Aordered%3A%29)、[旧yabaiの宣言と使用例](https://github.com/koekeishiya/yabai/blob/v3.3.10/src/osax/payload.m#L41)。後者はDock内で動くscripting additionの例であり、通常プロセスから使える証拠としては流用していない。コードは検証用に独立して記述した。
+
 ## 2026-10-18：取消後のAX送信とカスタム背景色のレビュー修正
 
 環境：macOS 27.0.1（26A434）／Apple M1 Max・arm64／Xcode 27.1（27A9275）／Swift 6.4（swiftlang-6.4.0.34.1）、Swift言語モード5。
