@@ -17,6 +17,7 @@ targets += [
     ]),
     .executableTarget(name: "TransomApp", dependencies: ["TransomCore", "TransomBridge"],
         linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("ApplicationServices")]),
+    .testTarget(name: "TransomAppTests", dependencies: ["TransomApp"]),
     .executableTarget(name: "TransomLab", linkerSettings: [.linkedFramework("AppKit")])
 ]
 #endif

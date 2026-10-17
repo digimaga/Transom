@@ -33,10 +33,15 @@ struct ServerWindow {
 struct ServerSnapshot {
     let windows: [ServerWindow] // ordered front-to-back, including our own transparent probe panels
     let readAt: TimeInterval
-    var byID: [UInt32: ServerWindow] {
-        Dictionary(windows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    let byID: [UInt32: ServerWindow]
+    let ordering: [OrderedWindow]
+
+    init(windows: [ServerWindow], readAt: TimeInterval) {
+        self.windows = windows
+        self.readAt = readAt
+        self.byID = Dictionary(windows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        self.ordering = windows.map { OrderedWindow(id: $0.id, pid: $0.pid, frame: $0.frame) }
     }
-    var ordering: [OrderedWindow] { windows.map { OrderedWindow(id: $0.id, pid: $0.pid, frame: $0.frame) } }
 }
 
 /// Reads metadata only: never requests pixels, kCGWindowName, or Screen Recording.

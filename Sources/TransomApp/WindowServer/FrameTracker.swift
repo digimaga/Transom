@@ -26,6 +26,7 @@ final class FrameTracker {
         // Common modes: keeps ticking while an NSMenu is tracking, like every other main-thread delivery here.
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        step()
     }
     func stop() {
         precondition(Thread.isMainThread)
@@ -34,6 +35,12 @@ final class FrameTracker {
     }
     private func step() {
         guard let ids = windowIDs?(), !ids.isEmpty else { return }
+        sample(ids)
+    }
+    /// Also used after an AX move completes: AX's logical frame need not be on screen yet.
+    func sample(_ ids: [UInt32]) {
+        precondition(Thread.isMainThread)
+        guard !ids.isEmpty else { return }
         WindowServer.flushPendingTransaction()
         var frames: [UInt32: Rect] = [:]
         for window in WindowServer.describe(ids) { frames[window.id] = window.frame }

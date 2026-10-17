@@ -30,6 +30,8 @@ final class AppController: NSObject, NSMenuDelegate {
     private var statusLine: NSMenuItem!
     private var toggleItem: NSMenuItem!
     private var timer: Timer?
+    private var localMouseMonitor: Any?
+    private var globalMouseMonitor: Any?
     private var notificationTokens: [(NotificationCenter, NSObjectProtocol)] = []
     private var enabled = true
     private var trusted = false
@@ -109,10 +111,11 @@ final class AppController: NSObject, NSMenuDelegate {
             guard let self, let panel = self.panels[token], panel.isVisible else { return }
             self.server.order(panel, behind: token.windowID)
             self.fastPollUntil = max(self.fastPollUntil, ProcessInfo.processInfo.systemUptime + 0.15)
+            self.recordInteraction()
         }
-        // Place the header on the frame the window just took, in the same frame when possible. The regular
-        // metadata pass is not forced per step (it would only add main-thread work during the drag).
-        drag.onMoved = { [weak self] token, frame in self?.follow([token.windowID: frame]) }
+        // AX readback can lead the visible window. Use the same WindowServer frame source as the timer
+        // so an AX completion cannot pull the header ahead, then let the next sample catch the commit.
+        drag.onMoved = { [weak self] token, _ in self?.tracker.sample([token.windowID]) }
         drag.onFinished = { [weak self] token in
             self?.dirtyApplications.insert(token.pid)
             // cancel() can be called while render() is removing a panel. Refresh after it returns.
@@ -190,7 +193,11 @@ final class AppController: NSObject, NSMenuDelegate {
             updateStatusLine()
             return
         }
-        if !running { running = true; lastApplicationsRefresh = 0 }
+        if !running {
+            running = true
+            lastApplicationsRefresh = 0
+            observeMouseInteraction()
+        }
         if now - lastApplicationsRefresh > 2 { refreshApplications(); lastApplicationsRefresh = now }
         // A held mouse button may be a native move/resize of any window; a header drag moves one through AX.
         // Both keep the per-frame tracker and the fast metadata poll on, plus a short tail after release
@@ -209,6 +216,27 @@ final class AppController: NSObject, NSMenuDelegate {
         let interval = interacting || now < fastPollUntil ? 0.05 : 0.5
         if now - lastMetadataRequest >= interval { requestMetadata() }
         extraPermits.removeAll { !$0.isValid() }
+    }
+    private func observeMouseInteraction() {
+        // Mouse-only monitors need no keyboard monitoring. Global events cover native app drags;
+        // local events cover our headers. Leave every event unchanged for its original recipient.
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp,
+                                          .rightMouseDown, .rightMouseDragged, .rightMouseUp,
+                                          .otherMouseDown, .otherMouseDragged, .otherMouseUp]
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recordInteraction() }
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            MainActor.assumeIsolated { self?.recordInteraction() }
+            return event
+        }
+    }
+    private func recordInteraction() {
+        guard running else { return }
+        interactionUntil = ProcessInfo.processInfo.systemUptime + 0.3
+        // Start from the event, not the next 50 ms metadata tick. start() is idempotent, so subsequent
+        // drag events only extend the tail; the timer controls the sampling rate.
+        tracker.start()
     }
     private func refreshApplications() {
         let denied = excluded.union(["com.apple.loginwindow", "com.apple.SecurityAgent"])
@@ -317,6 +345,11 @@ final class AppController: NSObject, NSMenuDelegate {
     }
     private func suspend() {
         running = false
+        if let localMouseMonitor { NSEvent.removeMonitor(localMouseMonitor) }
+        if let globalMouseMonitor { NSEvent.removeMonitor(globalMouseMonitor) }
+        localMouseMonitor = nil
+        globalMouseMonitor = nil
+        interactionUntil = 0
         tracker.stop()
         menus.cancel(); drag.cancel(); reservePermit?.cancel()
         extraPermits.forEach { $0.cancel() }; extraPermits.removeAll()
