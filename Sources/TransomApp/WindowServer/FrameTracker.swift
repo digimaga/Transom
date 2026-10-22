@@ -8,7 +8,7 @@ import TransomCore
 @MainActor
 final class FrameTracker {
     var windowIDs: (() -> [UInt32])?
-    var onFrames: (([UInt32: Rect]) -> Void)?
+    var onFrames: (([UInt32: ServerWindow]) -> Void)?
     private var timer: Timer?
     var isRunning: Bool { timer != nil }
     /// Polling period. Reading a few window bounds costs well under 0.1 ms, and polling several times per
@@ -42,8 +42,8 @@ final class FrameTracker {
         precondition(Thread.isMainThread)
         guard !ids.isEmpty else { return }
         WindowServer.flushPendingTransaction()
-        var frames: [UInt32: Rect] = [:]
-        for window in WindowServer.describe(ids) { frames[window.id] = window.frame }
-        if !frames.isEmpty { onFrames?(frames) }
+        var windows: [UInt32: ServerWindow] = [:]
+        for window in WindowServer.describe(ids) { windows[window.id] = window }
+        if !windows.isEmpty { onFrames?(windows) }
     }
 }

@@ -311,12 +311,19 @@ final class AppController: NSObject, NSMenuDelegate {
     /// Per-frame path while the user is moving or resizing: only repositions headers that are already
     /// shown, using the same placement rules as `render`. Eligibility, ordering and focus are NOT decided
     /// here; the regular metadata pass keeps doing that at its own cadence and hides what must be hidden.
-    private func follow(_ frames: [UInt32: Rect]) {
+    private func follow(_ windows: [UInt32: ServerWindow]) {
         let now = ProcessInfo.processInfo.systemUptime
         guard running, now >= quarantineUntil else { return }
         var geometry: ScreenGeometry?
         for (token, panel) in panels {
-            guard panel.isVisible, let frame = frames[token.windowID], let previous = panel.targetFrame,
+            guard panel.isVisible, let window = windows[token.windowID] else { continue }
+            guard window.pid == token.pid else {
+                panel.hide()
+                menus.cancel(ifTarget: token)
+                continue
+            }
+            let frame = window.frame
+            guard let previous = panel.targetFrame,
                   !previous.approximatelyEquals(frame, tolerance: 0.25) else { continue }
             if geometry == nil { geometry = ScreenGeometry.current() }
             guard let geometry else { return }
