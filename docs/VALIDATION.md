@@ -1,5 +1,23 @@
 # 検証結果 — 作成環境
 
+## 2026-10-22：高速追跡の所有者照合とbash 3.2互換性
+
+環境：macOS 27.0.1（26A434）／Apple M1 Max・arm64／Xcode 27.1（27A9275）／Swift 6.4（swiftlang-6.4.0.34.1）・言語モード5／macOS標準bash 3.2.57。
+
+Fable 5.1への読み取り専用相談と親レビューを経て、追跡時の所有PID欠落と検証スクリプトの空配列展開を根本修正した。採否の理由は `REVIEW.md` の同日記録を参照。
+
+確認した結果：
+
+- 修正前の `bash scripts/verify.sh`、修正後の `/bin/bash scripts/verify.sh` が成功。Core 53件／10 suiteとApp 4件／2 suite、合計57件／12 suite。両アプリのコンパイル、ソース配置・plist・シェル構文も成功した。
+- 実FrameTracker・実AppController.follow・実ServerWindow・Core座標処理に模擬メタデータを与え、同じ8ケースを比較した。旧版4/8、修正版8/8成功。異PID・同IDの枠は位置が変わらない場合も非表示となり、targetFrame・followedAt・配置を変更せず当該メニューだけ取り消す。同PIDの移動・同枠、2窓独立、異PIDと正常窓の混在、無関係メニュー・欠損サンプルの扱いも確認した。WindowServer・パネル・画面構成はインメモリーのfixtureであり、実OSでのID再利用やGUIを観測した試験ではない。
+- 実verify.shを `/bin/bash` 3.2で動かす隔離試験で、pluginディレクトリなしの場合の旧版 `TEST_ARGS[@]: unbound variable`（exit 1、test呼出0回）を再現。修正版はpluginあり・なし両条件でexit 0、意図した引数のtest呼出が各1回。xcrunは引数記録用shimなので、この試験自体はSwift build/testの成功証拠ではなく、実ビルド・テストは前項で別に確認した。
+- 担当ソースの隔離コピーで `/bin/bash scripts/build-app.sh` と `/bin/bash scripts/build-app.sh --lab` が成功。生成した両アプリを `dist/review-20261022/` に保存し、コピー後も `codesign --verify --strict` が成功。通常版は `Authority=Transom`。`--capabilities` はexact-window-idとprivate-relative-orderingがtrue（APIの存在確認であり、実GUIの互換性確認ではない）。
+- `git diff --check`、英語Localizable.stringsの `plutil -lint` が成功。独立した最終差分レビューで追加の確定P0〜P2指摘なし。
+
+未検証：修正版を起動した実GUI受入、実マウス、実AX、実OSでのwindow ID再利用、複数ディスプレイ・Spacesを含む `ACCEPTANCE.md` 全項目の再実施。通常版 `dist/Transom.app` と稼働中プロセスは差し替え・再起動していない。同PID内の世代は従来どおりAXの照合に依存し、今回のPID修正で完全な誤操作排除を証明したとはしない。
+
+証拠（Git非追跡）：`dist/review-20261022/` にアプリ2本、通常検証・ビルドログ、Fable応答、`tracking/`（旧版・修正版の比較ソースと8ケース結果）、`verify/`（bash互換性の旧版・修正版結果）、`transition/`（不採用候補の模擬AX試験）を保存。回帰用ハーネスは通常のSwiftテスト数に含めていない。
+
 ## 2026-10-18：追跡の初動・索引構築・座標源の3点を改善
 
 環境：macOS 27.0.1（26A434）／Apple M1 Max・arm64／Xcode 27.1／Swift 6.4・言語モード5。修正分類は根本修正（下記3経路の待機・重複処理・座標源の競合の除去）。別プロセス間の一体移動は採用せず、既存の位置追跡方式を改善した。ブラウザの追従不良の全原因を確定・解消したという意味ではない。

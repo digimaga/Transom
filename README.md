@@ -95,7 +95,7 @@ For reports, see [contributing and bug reports](CONTRIBUTING.md). Remove persona
 
 ## Verification status
 
-The latest recorded local verification, on **2026-10-18**, passed **53 tests across 10 suites** and built both apps on macOS 27.0.1 / Apple Silicon. Separate checks passed 15 cancellation/normal-operation cases with simulated AX responses and 7 AppKit control-color cases. The updated app was not launched for live GUI acceptance. Earlier records cover specific GUI scenarios on macOS 26 and 27.0.1. These results apply to the recorded environments and actions, not every app or OS.
+The latest recorded local verification, on **2026-10-22**, passed **57 tests across 12 suites** and built both apps on macOS 27.0.1 / Apple Silicon. Separate checks covered window-owner identity during tracking with injected WindowServer responses and the verification script under macOS's Bash 3.2. The updated app was not launched for live GUI acceptance. Earlier records cover specific GUI scenarios on macOS 26 and 27.0.1. These results apply to the recorded environments and actions, not every app or OS.
 
 Multiple displays, Intel hardware, and a complete acceptance rerun on macOS 27 remain unverified. See the dated [validation records](docs/VALIDATION.md) and [acceptance checklist](docs/ACCEPTANCE.md) for individual results. `BUILD_STATUS.json` is the historical 2026-09-16 build snapshot, not the current compatibility summary.
 

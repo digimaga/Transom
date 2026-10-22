@@ -10,10 +10,10 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   # Tests use Swift Testing (Command Line Tools ship Testing.framework but no XCTest).
   # Without Xcode, the default build system does not pass the Testing macro plugin path
   # to the frontend, so it is given explicitly when the plugin directory exists.
-  TEST_ARGS=()
+  TEST_ARGS=(test)
   TOOLCHAIN_PLUGINS="$(dirname "$(dirname "$(xcrun --find swift)")")/lib/swift/host/plugins/testing"
   if [[ -d "$TOOLCHAIN_PLUGINS" ]]; then TEST_ARGS+=(-Xswiftc -plugin-path -Xswiftc "$TOOLCHAIN_PLUGINS"); fi
-  xcrun swift test "${TEST_ARGS[@]}"
+  xcrun swift "${TEST_ARGS[@]}"
   echo "macOS build and unit tests completed. GUI/AX/WindowServer still require manual tests."
 else
   swift test
