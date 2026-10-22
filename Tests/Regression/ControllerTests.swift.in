@@ -1,0 +1,507 @@
+import AppKit
+import Foundation
+import TransomCore
+
+@MainActor final class FixtureEvent {
+    typealias EventTypeMask = NSEvent.EventTypeMask
+    static var local: ((FixtureEvent) -> FixtureEvent?)?
+    static var global: ((FixtureEvent) -> Void)?
+    static var masks: [EventTypeMask] = []
+    static var removed: [Int] = []
+    static func addLocalMonitorForEvents(matching mask: EventTypeMask,
+                                         handler: @escaping (FixtureEvent) -> FixtureEvent?) -> Any? {
+        masks.append(mask)
+        local = handler
+        return 1
+    }
+    static func addGlobalMonitorForEvents(matching mask: EventTypeMask,
+                                          handler: @escaping (FixtureEvent) -> Void) -> Any? {
+        masks.append(mask)
+        global = handler
+        return 2
+    }
+    static func removeMonitor(_ token: Any) {
+        let identifier = token as! Int
+        removed.append(identifier)
+        if identifier == 1 { local = nil } else { global = nil }
+    }
+}
+
+@MainActor final class AXObserverHub {
+    static let shared = AXObserverHub()
+    func removeAll() {}
+}
+
+struct ScreenGeometry {
+    static var screen = Rect(x: 0, y: 30, width: 1200, height: 800)
+    let primaryHeight: Double
+    let visibleFrames: [Rect]
+    static func current() -> ScreenGeometry? {
+        ScreenGeometry(primaryHeight: 900, visibleFrames: [screen])
+    }
+    func appKit(_ rect: Rect) -> NSRect {
+        Geometry.flip(rect, primaryHeight: primaryHeight).cgRect
+    }
+}
+
+final class FixtureApplication {
+    let processIdentifier: Int32
+    init?(processIdentifier: Int32) { self.processIdentifier = processIdentifier }
+    func activate() -> Bool { true }
+}
+
+final class FixtureWorkspace {
+    static let shared = FixtureWorkspace()
+    var frontmostApplication: FixtureApplication?
+}
+
+@MainActor final class HeaderPanel {
+    var isVisible = true
+    var targetFrame: Rect?
+    var followedAt: TimeInterval = 0
+    var globalHeaderFrame: Rect?
+    var frame = NSRect(x: 0, y: 0, width: 400, height: 78)
+    var windowNumber = 100000
+    var hideCount = 0
+    var positionCount = 0
+    func hide() { isVisible = false; hideCount += 1 }
+    func close() { isVisible = false }
+    func setFrame(_ frame: NSRect, display: Bool) { self.frame = frame; positionCount += 1 }
+    func setFrameOrigin(_ origin: NSPoint) { frame.origin = origin; positionCount += 1 }
+}
+
+@MainActor final class MenuCoordinator {
+    var target: WindowToken?
+    var cancelled: [WindowToken] = []
+    func cancel() {
+        if let target { cancelled.append(target) }
+        target = nil
+    }
+    func cancel(ifTarget token: WindowToken) {
+        if target == token { cancel() }
+    }
+}
+
+@MainActor final class DragCoordinator {
+    var target: WindowToken?
+    var onMoved: ((WindowToken, Rect) -> Void)?
+    func cancel() { target = nil }
+}
+
+@MainActor final class AXAppWorker {
+    let descriptor: ApplicationDescriptor
+    var focusRequests: [WindowToken] = []
+    var reserveRequests: [(WindowToken, Rect, Rect)] = []
+    var pendingFocus: [(@MainActor (Result<Void, Error>) -> Void)] = []
+    var pendingReserve: [(@MainActor (Result<Rect, Error>) -> Void)] = []
+    var pendingScan: [(@MainActor (Result<ApplicationScan, Error>) -> Void)] = []
+    var deferFocus = false
+    var deferReserve = false
+    var appliedFrame: Rect?
+    init(descriptor: ApplicationDescriptor) { self.descriptor = descriptor }
+    func focus(_ token: WindowToken, permit: OperationPermit,
+               completion: @escaping @MainActor (Result<Void, Error>) -> Void) {
+        focusRequests.append(token)
+        if deferFocus { pendingFocus.append(completion) }
+        else { completion(.success(())) }
+    }
+    func reserve(_ token: WindowToken, expected: Rect, desired: Rect, permit: OperationPermit,
+                 completion: @escaping @MainActor (Result<Rect, Error>) -> Void) {
+        reserveRequests.append((token, expected, desired))
+        let applied = appliedFrame ?? desired
+        WindowServer.windows[token.windowID] = ServerWindow(id: token.windowID, pid: token.pid,
+                                                             layer: 0, alpha: 1, frame: applied)
+        if deferReserve { pendingReserve.append(completion) }
+        else { completion(.success(applied)) }
+    }
+    func scan(completion: @escaping @MainActor (Result<ApplicationScan, Error>) -> Void) {
+        pendingScan.append(completion)
+    }
+}
+
+@MainActor final class WindowServer {
+    static var windows: [UInt32: ServerWindow] = [:]
+    static var describeCalls: [[UInt32]] = []
+    static var flushCount = 0
+    static func reset() { windows = [:]; describeCalls = []; flushCount = 0 }
+    static func flushPendingTransaction() { flushCount += 1 }
+    static func describe(_ ids: [UInt32]) -> [ServerWindow] {
+        describeCalls.append(ids)
+        return ids.compactMap { windows[$0] }
+    }
+}
+
+@MainActor final class FixtureController: NSObject {
+    let menus = MenuCoordinator()
+    let drag = DragCoordinator()
+    let tracker = FrameTracker()
+    var metadataRequests = 0
+    var renderCount = 0
+    var statusMessages: [String] = []
+
+__CONTROLLER_STORAGE__
+
+    func bindTracker() {
+__TRACKER_BINDINGS__
+    }
+    func status(_ message: String) { statusMessages.append(message) }
+    func statusPlacement(_ applied: Rect, desired: Rect, success: String) { status(success) }
+    func render() { renderCount += 1 }
+    func requestMetadata() {
+        metadataRequests += 1
+        metadata = ServerSnapshot(windows: Array(WindowServer.windows.values),
+                                  readAt: ProcessInfo.processInfo.systemUptime)
+    }
+    func add(_ worker: AXAppWorker, snapshots: [WindowSnapshot]) {
+        let state = WorkerState(worker: worker, icon: nil)
+        state.snapshots = snapshots
+        workers[worker.descriptor.pid] = state
+    }
+    func setMetadata(_ windows: [ServerWindow]) {
+        WindowServer.windows = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
+        metadata = ServerSnapshot(windows: windows, readAt: ProcessInfo.processInfo.systemUptime)
+    }
+    func setRunning(_ value: Bool) { running = value; trusted = value }
+    func setPanel(_ token: WindowToken, _ panel: HeaderPanel) { panels[token] = panel }
+    func setMenuTarget(_ token: WindowToken?) { menus.target = token }
+    func setDragTarget(_ token: WindowToken?) { drag.target = token }
+    func setQuarantine(_ value: TimeInterval) { quarantineUntil = value }
+    func panel(_ token: WindowToken) -> HeaderPanel? { panels[token] }
+    fileprivate func workerState(_ pid: Int32) -> WorkerState? { workers[pid] }
+    func hasReservePermit(_ permit: OperationPermit) -> Bool { reservePermit === permit }
+    func currentReservePermit() -> OperationPermit? { reservePermit }
+    func currentReserveTarget() -> WindowToken? { reserveTarget }
+    func fullHistory(_ token: WindowToken) -> MaximizeHistory? { restoreFrames[token] }
+    func verticalHistory(_ token: WindowToken) -> MaximizeHistory? { verticalRestoreFrames[token] }
+    func enqueueExtra(_ permit: OperationPermit) { extraPermits.append(permit) }
+    func hasExtra(_ permit: OperationPermit) -> Bool { extraPermits.contains { $0 === permit } }
+    func tracked() -> [UInt32] { trackedWindowIDs() }
+    func followFixture(_ windows: [UInt32: ServerWindow]) { follow(windows) }
+    func interaction() { recordInteraction() }
+    func transitionFixture() { transition() }
+    func toggleFull(_ token: WindowToken) { toggleMaximize(token) }
+    func toggleVertical(_ token: WindowToken) { toggleVerticalMaximize(token) }
+    func reserveBar(_ token: WindowToken) { reserveOnBar(token) }
+    func reserveFrontmost() { reserveFocused() }
+    func repositionFixture(_ token: WindowToken, worker: AXAppWorker, actual: Rect, desired: Rect,
+                           completion: @escaping @MainActor (Result<Rect, Error>) -> Void) {
+        reposition(token, worker: worker, actual: actual, desired: desired, completion: completion)
+    }
+    func scanFixture(_ pid: Int32) { scan(pid: pid) }
+    func observeFixture() { observeMouseInteraction() }
+    func suspendFixture() { suspend() }
+    func retire(_ pid: Int32) { workers.removeValue(forKey: pid) }
+
+__CONTROLLER_METHODS__
+}
+
+@MainActor enum ControllerRegression {
+    static var count = 0
+    static var failures: [String] = []
+    static func check(_ condition: @autoclosure () -> Bool, _ name: String) {
+        count += 1
+        if !condition() { failures.append(name); print("FAIL \(name)") }
+    }
+    static func window(_ id: UInt32, _ pid: Int32, _ frame: Rect) -> ServerWindow {
+        ServerWindow(id: id, pid: pid, layer: 0, alpha: 1, frame: frame)
+    }
+    static func setup(_ pid: Int32 = 981234, _ id: UInt32 = 777,
+                      frame: Rect = Rect(x: 100, y: 100, width: 400, height: 300))
+        -> (FixtureController, AXAppWorker, WindowToken, HeaderPanel) {
+        WindowServer.reset()
+        let controller = FixtureController()
+        let descriptor = ApplicationDescriptor(instance: UUID(), pid: pid, name: "Fixture",
+                                               bundleIdentifier: nil, launchDate: nil)
+        let worker = AXAppWorker(descriptor: descriptor)
+        let token = WindowToken(processInstance: descriptor.instance, pid: pid, windowID: id, incarnation: 1)
+        let snapshot = WindowSnapshot(token: token, appName: "Fixture", bundleIdentifier: nil,
+                                      title: "Fixture", frame: frame, focused: true,
+                                      minimized: false, fullscreen: false, modal: false,
+                                      eligible: true, headings: [], observedAt: ProcessInfo.processInfo.systemUptime)
+        controller.add(worker, snapshots: [snapshot])
+        controller.setRunning(true)
+        controller.setMetadata([window(id, pid, frame)])
+        let panel = HeaderPanel()
+        panel.targetFrame = frame
+        controller.setPanel(token, panel)
+        FixtureWorkspace.shared.frontmostApplication = FixtureApplication(processIdentifier: pid)
+        controller.bindTracker()
+        return (controller, worker, token, panel)
+    }
+    static func addSecond(_ controller: FixtureController, worker: AXAppWorker,
+                          pid: Int32 = 981234, id: UInt32 = 778,
+                          frame: Rect = Rect(x: 600, y: 100, width: 400, height: 300))
+        -> (WindowToken, HeaderPanel) {
+        let token = WindowToken(processInstance: worker.descriptor.instance, pid: pid,
+                                windowID: id, incarnation: 2)
+        let snapshot = WindowSnapshot(token: token, appName: "Fixture", bundleIdentifier: nil,
+                                      title: "Other", frame: frame, focused: false,
+                                      minimized: false, fullscreen: false, modal: false,
+                                      eligible: true, headings: [], observedAt: ProcessInfo.processInfo.systemUptime)
+        controller.workerState(pid)?.snapshots.append(snapshot)
+        WindowServer.windows[id] = window(id, pid, frame)
+        controller.requestMetadata()
+        let panel = HeaderPanel()
+        panel.targetFrame = frame
+        controller.setPanel(token, panel)
+        return (token, panel)
+    }
+    static func trackerCases() {
+        let (controller, _, token, panel) = setup()
+        let first = panel.targetFrame!
+        let moved = Rect(x: 130, y: 120, width: 400, height: 300)
+        controller.setMenuTarget(token)
+        WindowServer.windows[token.windowID] = window(token.windowID, token.pid, moved)
+        controller.interaction()
+        check(controller.tracker.isRunning, "interaction starts real tracker")
+        check(WindowServer.describeCalls.last == [token.windowID], "tracker reads nonempty exact ID")
+        check(WindowServer.flushCount > 0, "tracker flushes before describe")
+        check(panel.targetFrame == moved && panel.positionCount == 1, "tracker reaches follow and moves panel")
+        check(panel.followedAt > 0 && panel.globalHeaderFrame != nil, "follow records observed frame")
+        check(controller.menus.cancelled == [token], "moved target menu cancelled")
+        let afterMove = panel.positionCount
+        controller.tracker.sample([token.windowID])
+        check(panel.positionCount == afterMove, "same PID same frame does not reposition")
+        controller.tracker.start()
+        check(WindowServer.describeCalls.count == 2, "double start does not immediately resample")
+        let reflected = Mirror(reflecting: controller.tracker).children.first { $0.label == "timer" }?.value
+        let activeTimer = reflected as? Timer
+        check(activeTimer.map { CFRunLoopContainsTimer(CFRunLoopGetMain(), $0, CFRunLoopMode.commonModes) } == true,
+              "tracker timer is registered in common run-loop modes")
+        let beforeMode = WindowServer.describeCalls.count
+        _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        check(WindowServer.describeCalls.count > beforeMode, "tracker timer fires")
+        controller.tracker.stop()
+        check(!controller.tracker.isRunning, "tracker stops")
+        let afterStop = WindowServer.describeCalls.count
+        _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        check(WindowServer.describeCalls.count == afterStop, "stopped tracker has no timer callback")
+        let (secondToken, secondPanel) = addSecond(controller, worker: controller.workerState(token.pid)!.worker)
+        panel.isVisible = false
+        WindowServer.windows[secondToken.windowID] = window(secondToken.windowID, secondToken.pid,
+                                                            Rect(x: 630, y: 120, width: 400, height: 300))
+        controller.tracker.start()
+        check(WindowServer.describeCalls.last == [secondToken.windowID], "restart samples new visible ID")
+        check(secondPanel.positionCount == 1, "restart follows new panel")
+        controller.tracker.stop()
+        check(first != panel.targetFrame, "original frame changed only by actual sample")
+
+        let (wrongOwner, _, wrongToken, wrongPanel) = setup()
+        wrongOwner.setMenuTarget(wrongToken)
+        let foreign = window(wrongToken.windowID, wrongToken.pid + 1,
+                             Rect(x: 150, y: 100, width: 400, height: 300))
+        wrongOwner.followFixture([wrongToken.windowID: foreign])
+        check(!wrongPanel.isVisible && wrongPanel.positionCount == 0, "changed foreign owner hides without movement")
+        check(wrongOwner.menus.cancelled == [wrongToken], "changed foreign owner cancels target menu")
+        let (sameForeign, _, sameToken, samePanel) = setup()
+        sameForeign.followFixture([sameToken.windowID: window(sameToken.windowID, sameToken.pid + 1,
+                                                              samePanel.targetFrame!)])
+        check(!samePanel.isVisible && samePanel.positionCount == 0, "same frame foreign owner still hides")
+
+        let (mixed, mixedWorker, mixedToken, mixedPanel) = setup()
+        let (otherToken, otherPanel) = addSecond(mixed, worker: mixedWorker)
+        let (unrelatedToken, _) = addSecond(mixed, worker: mixedWorker, id: 779)
+        mixed.setMenuTarget(unrelatedToken)
+        mixed.followFixture([
+            mixedToken.windowID: window(mixedToken.windowID, mixedToken.pid + 1,
+                                         Rect(x: 180, y: 100, width: 400, height: 300)),
+            otherToken.windowID: window(otherToken.windowID, otherToken.pid,
+                                         Rect(x: 630, y: 100, width: 400, height: 300))
+        ])
+        check(!mixedPanel.isVisible && mixedPanel.positionCount == 0, "mixed foreign owner hides only affected panel")
+        check(otherPanel.isVisible && otherPanel.positionCount == 1, "mixed valid owner still moves")
+        check(mixed.menus.target == unrelatedToken && mixed.menus.cancelled.isEmpty,
+              "foreign owner leaves unrelated menu intact")
+        let previous = otherPanel.positionCount
+        mixed.followFixture([:])
+        check(otherPanel.positionCount == previous && otherPanel.isVisible, "missing sample does not hide known panel")
+
+        let (dragController, _, dragToken, dragPanel) = setup()
+        let logical = Rect(x: 300, y: 200, width: 400, height: 300)
+        let actual = Rect(x: 160, y: 140, width: 400, height: 300)
+        WindowServer.windows[dragToken.windowID] = window(dragToken.windowID, dragToken.pid, actual)
+        dragController.drag.onMoved?(dragToken, logical)
+        check(dragPanel.targetFrame == actual && dragPanel.targetFrame != logical,
+              "drag completion follows CG frame rather than AX logical frame")
+        check(WindowServer.describeCalls.last == [dragToken.windowID], "drag completion samples exact ID")
+    }
+
+    static func monitorCases() {
+        let (controller, _, _, _) = setup()
+        FixtureEvent.masks = []
+        FixtureEvent.removed = []
+        controller.observeFixture()
+        let event = FixtureEvent()
+        let expectedMask: FixtureEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp,
+            .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp]
+        check(FixtureEvent.masks == [expectedMask, expectedMask], "monitors observe only all mouse button phases")
+        let oldLocal = FixtureEvent.local!
+        let oldGlobal = FixtureEvent.global!
+        check(oldLocal(event) === event, "local monitor returns identical event")
+        check(WindowServer.describeCalls.count == 1, "local event samples before handler returns")
+        oldGlobal(event)
+        check(WindowServer.describeCalls.count == 1, "global event does not duplicate active tracker")
+        controller.suspendFixture()
+        check(Set(FixtureEvent.removed) == [1, 2] && FixtureEvent.local == nil && FixtureEvent.global == nil,
+              "suspend unregisters both monitor handles")
+        _ = oldLocal(event)
+        oldGlobal(event)
+        check(!controller.tracker.isRunning && WindowServer.describeCalls.count == 1,
+              "late event after suspend cannot restart tracker")
+        controller.setRunning(true)
+        controller.observeFixture()
+        FixtureEvent.global?(event)
+        check(controller.tracker.isRunning, "new global monitor restarts tracking")
+        controller.suspendFixture()
+    }
+
+    static func placementCases() {
+        let original = Rect(x: 100, y: 100, width: 400, height: 300)
+        let (controller, worker, token, _) = setup(frame: original)
+        let (otherToken, _) = addSecond(controller, worker: worker)
+        let otherFrame = WindowServer.windows[otherToken.windowID]!.frame
+        controller.toggleVertical(token)
+        let vertical = WindowServer.windows[token.windowID]!.frame
+        check(vertical.x == original.x && vertical.width == original.width && vertical.y < original.y,
+              "vertical maximize preserves horizontal axis")
+        controller.toggleFull(token)
+        let full = WindowServer.windows[token.windowID]!.frame
+        check(full.width > original.width, "full maximize expands width")
+        controller.toggleFull(token)
+        check(WindowServer.windows[token.windowID]!.frame == vertical, "full restore returns to vertical frame")
+        controller.toggleVertical(token)
+        check(WindowServer.windows[token.windowID]!.frame == original, "vertical restore returns to original frame")
+        check(WindowServer.windows[otherToken.windowID]!.frame == otherFrame,
+              "maximize sequence leaves other token unchanged")
+        check(controller.fullHistory(token) == nil && controller.verticalHistory(token) == nil,
+              "both restoration histories clear independently")
+        check(worker.reserveRequests.map { $0.0 } == [token, token, token, token],
+              "four transitions reserve only requested token")
+        controller.toggleVertical(otherToken)
+        check(controller.verticalHistory(otherToken) != nil && controller.verticalHistory(token) == nil,
+              "second token owns separate vertical history")
+        check(WindowServer.windows[token.windowID]!.frame == original,
+              "second token toggle does not move first token")
+
+        let (clamped, clampWorker, clampToken, _) = setup(frame: original)
+        let applied = Rect(x: 0, y: 60, width: 900, height: 700)
+        clampWorker.appliedFrame = applied
+        clamped.toggleFull(clampToken)
+        check(clamped.fullHistory(clampToken)?.applied == applied,
+              "accepted frame recorded in maximize history")
+        clampWorker.appliedFrame = nil
+        clamped.toggleFull(clampToken)
+        check(WindowServer.windows[clampToken.windowID]!.frame == original,
+              "clamped accepted frame restores original")
+
+        let nearTop = Rect(x: 100, y: 30, width: 400, height: 300)
+        let (bar, barWorker, barToken, _) = setup(frame: nearTop)
+        let (barOther, _) = addSecond(bar, worker: barWorker)
+        let beforeOther = WindowServer.windows[barOther.windowID]!.frame
+        bar.reserveBar(barToken)
+        check(barWorker.reserveRequests.count == 1 && barWorker.reserveRequests[0].0 == barToken,
+              "reserveOnBar targets clicked token")
+        check(WindowServer.windows[barOther.windowID]!.frame == beforeOther,
+              "reserveOnBar preserves other token")
+        let (front, frontWorker, frontToken, _) = setup(frame: nearTop)
+        let (frontOther, _) = addSecond(front, worker: frontWorker)
+        let otherBefore = WindowServer.windows[frontOther.windowID]!.frame
+        front.reserveFrontmost()
+        check(frontWorker.reserveRequests.count == 1 && frontWorker.reserveRequests[0].0 == frontToken,
+              "reserveFocused targets focused token")
+        check(WindowServer.windows[frontOther.windowID]!.frame == otherBefore,
+              "reserveFocused preserves other token")
+    }
+
+    static func completionCases() {
+        let frame = Rect(x: 100, y: 100, width: 400, height: 300)
+        let desired = Rect(x: 100, y: 60, width: 400, height: 340)
+        let (controller, worker, first, _) = setup(frame: frame)
+        let (second, _) = addSecond(controller, worker: worker)
+        worker.deferFocus = true
+        var completed = 0
+        controller.repositionFixture(first, worker: worker, actual: frame, desired: desired) { _ in completed += 1 }
+        let oldPermit = controller.currentReservePermit()!
+        controller.repositionFixture(second, worker: worker, actual: frame, desired: desired) { _ in completed += 1 }
+        let newPermit = controller.currentReservePermit()!
+        worker.pendingFocus.removeFirst()(.success(()))
+        check(worker.reserveRequests.isEmpty && controller.hasReservePermit(newPermit),
+              "old focus completion cannot start reserve or clear new permit")
+        check(controller.currentReserveTarget() == second, "old focus completion retains new target")
+        check(oldPermit !== newPermit, "new reposition owns distinct permit")
+        worker.pendingFocus.removeFirst()(.success(()))
+        check(worker.reserveRequests.map { $0.0 } == [second] && completed == 1,
+              "new focus completion reserves only current target")
+
+        let (late, lateWorker, lateFirst, _) = setup(frame: frame)
+        let (lateSecond, _) = addSecond(late, worker: lateWorker)
+        lateWorker.deferReserve = true
+        var lateCompletions = 0
+        late.repositionFixture(lateFirst, worker: lateWorker, actual: frame, desired: desired) { _ in lateCompletions += 1 }
+        late.repositionFixture(lateSecond, worker: lateWorker, actual: frame, desired: desired) { _ in lateCompletions += 1 }
+        let activePermit = late.currentReservePermit()!
+        lateWorker.pendingReserve.removeFirst()(.success(desired))
+        check(late.hasReservePermit(activePermit) && late.currentReserveTarget() == lateSecond,
+              "old reserve completion retains new request")
+        check(lateCompletions == 0, "old reserve completion does not call user completion")
+        lateWorker.pendingReserve.removeFirst()(.success(desired))
+        check(lateCompletions == 1 && late.currentReserveTarget() == nil,
+              "new reserve completion finishes once")
+    }
+
+    static func scanAndTransitionCases() {
+        let (controller, worker, token, panel) = setup()
+        controller.scanFixture(token.pid)
+        check(worker.pendingScan.count == 1 && controller.workerState(token.pid)!.scanning,
+              "scan starts exact worker request")
+        let previousState = controller.workerState(token.pid)!
+        let replacement = AXAppWorker(descriptor: ApplicationDescriptor(instance: UUID(), pid: token.pid,
+                                                                         name: "New", bundleIdentifier: nil, launchDate: nil))
+        let preservedSnapshots = controller.workerState(token.pid)!.snapshots
+        controller.add(replacement, snapshots: preservedSnapshots)
+        controller.workerState(token.pid)!.hidden = [token]
+        let originalRenders = controller.renderCount
+        worker.pendingScan.removeFirst()(.success(ApplicationScan(instance: worker.descriptor.instance,
+                                                                    windows: [], hidden: [], complete: true)))
+        check(controller.workerState(token.pid)!.worker === replacement && previousState.scanning &&
+              controller.renderCount == originalRenders,
+              "old worker scan completion discarded")
+        controller.scanFixture(token.pid)
+        replacement.pendingScan.removeFirst()(.success(ApplicationScan(instance: UUID(), windows: [],
+                                                                         hidden: [], complete: true)))
+        check(controller.workerState(token.pid)!.snapshots.map(\.token) == [token] &&
+              controller.workerState(token.pid)!.hidden == [token] && controller.renderCount == originalRenders,
+              "wrong instance scan discarded")
+        controller.scanFixture(token.pid)
+        replacement.pendingScan.removeFirst()(.failure(TransomError.ax(-1)))
+        check(controller.workerState(token.pid)!.failed &&
+              controller.workerState(token.pid)!.snapshots.map(\.token) == [token] &&
+              controller.workerState(token.pid)!.hidden == [token] &&
+              controller.renderCount == originalRenders + 1,
+              "current scan failure only marks failed and renders")
+        let extra = OperationPermit()
+        controller.enqueueExtra(extra)
+        controller.setMenuTarget(token)
+        controller.setDragTarget(token)
+        controller.transitionFixture()
+        check(controller.hasExtra(extra) && extra.isValid(), "transition keeps unrelated extra permit")
+        check(!panel.isVisible && controller.menus.target == nil && controller.drag.target == nil,
+              "transition hides panel and cancels active menu and drag")
+    }
+}
+
+@main struct ControllerTests {
+    @MainActor static func main() async {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 25) {
+            fputs("Controller regression timed out\n", stderr)
+            exit(124)
+        }
+        ControllerRegression.trackerCases()
+        ControllerRegression.monitorCases()
+        ControllerRegression.placementCases()
+        ControllerRegression.completionCases()
+        ControllerRegression.scanAndTransitionCases()
+        print("RESULT controller passed=\(ControllerRegression.count - ControllerRegression.failures.count) total=\(ControllerRegression.count)")
+        if !ControllerRegression.failures.isEmpty { exit(1) }
+    }
+}

@@ -1,5 +1,40 @@
 # 検証結果 — 作成環境
 
+## 2026-10-23：監査台帳に従ったテスト修正・補強
+
+環境：macOS 27.0.1（26A434）／arm64／Xcode 27.1（27A9275）／Swift 6.4（swiftlang-6.4.0.34.1）・言語モード5／標準bash 3.2.57。
+
+監査commit `6c01e0c` から、LV-01〜05を修正・統合し、GAP-01〜09の自動検証経路を補強した。分類はテスト品質の根本修正。本番の `Sources/`・権限・安全条件・動作は変更していない。[対応台帳](TEST_AUDIT.md) と [回帰試験の設計・境界](../Tests/Regression/README.md) に本番接続と各assertion群の意味を記録した。
+
+- `/bin/bash scripts/verify.sh` が成功。Core 53件／10 suite、App 8件／3 suite、合計61件／13 suite。両製品コンパイル、既存ソース／plist／shell構文チェックも成功。
+- 同じ通常入口で、現行ソースを毎回読み込むRegression 5群が成功：AX 102 assertion、Controller 59 assertion、Menu 6ケース、Gesture 2条件、Shell 2条件。粒度が異なるため61件へ加算しない。
+- AXは実workerのキュー・permit・scan・witness・二段階reserveとCG受理枠、MainRunLoopのeventTracking common mode配送までを検査。AX属性・書込み・actionとCG応答はfixture。observer APIは意図せず呼ばれると失敗させ、実IPCしない。
+- Controllerは実FrameTrackerから非空ID→follow、所有PID、CG座標優先、2窓の履歴・単一窓reserve、古い完了／instance、監視登録解除を検査。monitor登録先・worker応答・panelはfakeで、起動全体やOS配送は含まない。
+- 実HeaderViewの5高さ・hit test・overflow・各ボタン・配色を非表示の所有NSWindowで検査。別の現行ソース読込試験でポインタ入力だけを固定し、HeaderView/DragSurface両方のdown時初期位置を検査。ユーザーのポインタ移動でassertionが揺れない方式へ変更した。
+- 全ファイルを隔離コピーし、下表の変異を1つずつ適用。変更なしはSwift 61件とRegression 5群が成功。9変異ともコンパイル後の意図したassertionで失敗した。compile失敗・0件実行・timeoutを検出成功としていない。
+
+|変異|隔離コピーで壊した契約|補強後の検出|
+|---|---|---|
+|M01|Rect/Point flipを恒等変換へ|G09/G10で3 assertion失敗。監査時は57件すべて通過していた|
+|M02|FrameTrackerへ空の読取IDを渡す|Controller 9 assertion失敗（50/59）。監査時は見逃し|
+|M03|followの所有PID一致を常時許可へ|Controller 3 assertion失敗（56/59）。監査時は見逃し|
+|M04|permitのcommit済み記録を削除|既存P01/P04で3 assertion失敗。高価値の安全条件を維持|
+|M05|workerのmodal判定を無効化|AXのvalidateFocus拒否が失敗（101/102）|
+|M06|DragSurfaceの初期pointerをzeroへ|gestureのdown時座標assertionで失敗|
+|M07|MainRunLoopをdefault modeのみに限定|eventTracking内配送のassertionで失敗（101/102）|
+|M08|popup後の対象妥当性guardを除去|選択した後に対象を無効化するMenuケースで失敗|
+|M09|縦復元で通常最大化の履歴を読む|Controller 5 assertion失敗（54/59）|
+
+全変異のexitは1。M01/M04はSwift test、残りは指定Regression suiteを実行した結果であり、全suiteを9回実行したとはしていない。選択的な退行検出の証拠であり、全branch coverageや網羅的mutation scoreではない。
+
+変異後は隔離コピーの全ファイルがコピー時点へ戻ったことをSHA-256で確認し、そこで `/bin/bash scripts/build-app.sh` と `--lab` を実行。両bundle生成・`codesign --verify --strict` が成功した。通常版 `dist/Transom.app`／`dist/TransomLab.app` は差し替えず、起動・終了・設定変更もしない。
+
+独立レビューで、AX呼出しの置換漏れリスク、fixture受理枠の不足、menu取消の別条件による偽成功、実pointerへの依存を指摘し、それぞれ隔離検査・二段階配置試験・選択後の文脈変更・固定pointer試験で対応した。旧execute結果のonStatus通知は既存方針のままであり、要求target/permitの保護と表示通知の抑止を同一視しない。
+
+未検証：実AX IPC／native NSMenuのkeyboard操作／実マウス／hidden viewへのOSイベント配送／第三者アプリ／複数画面・Spaces・Mission Control／他OS・Intel。P0-01以外の手動受入28項目は再実施していない。停止時monitor解除のfake試験を、TCC・実global monitor受入とは数えない。
+
+証拠（Git非追跡）：`dist/test-reinforcement-20261023/verify.log`、`reinforcement_mutations.py`、`mutation-results.json`（全入力hash・差分・exit・assertion要約）、`M00`〜`M09`の各ログ、`app-bundle.log`／`lab-bundle.log`、`snapshot/`。通常Regressionの生成物・source-hashes・個別ログは `.build/regression-0p7ref_1/`、snapshot内の各fixture出力先は各Mログに記録。
+
 ## 2026-10-23：全テストの価値・本番接続を監査
 
 環境：macOS 27.0.1（26A434）／arm64／Xcode 27.1（27A9275）／Swift 6.4（swiftlang-6.4.0.34.1）・言語モード5。

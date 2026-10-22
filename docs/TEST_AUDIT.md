@@ -1,5 +1,57 @@
 # テスト価値・本番接続の監査台帳
 
+## 2026-10-23：台帳に基づく補強後の状態
+
+初回監査commit `6c01e0c` を起点に、低価値候補5件を修正・統合し、GAP-01〜09の自動試験を補強した。本番の安全条件や動作は変更していない。下の初回監査は比較根拠として保持し、当時の行番号・57件・未着手という記載は**履歴**として読む。
+
+原因は、同じ実装を往復するだけの期待値、異常条件の混在、実状態を持たないfixture、通常検証から外れた過去ハーネスだった。対応分類は**テスト品質の根本修正**。テストを減らすために契約を削るのではなく、独立期待値・正常対照・本番コードの接続を足した。製品側のfallbackやガードは追加していない。
+
+### 対応台帳
+
+|ID|状態・実施内容|証拠となる現行テスト／残る境界|
+|---|---|---|
+|LV-01|対応済み：Rect変換の片道具体値・負座標を追加、往復性も保持|G09、M01で恒等変換を検出|
+|LV-02|対応済み：Point変換の独立期待値を追加|G10、M01。Rectとは別overloadを維持|
+|LV-03|対応済み：余白のある正常対照を置き、NaN/無限大/非正サイズを個別化|G13。G07も幅不足と高さ不足を分離|
+|LV-04|対応済み：H03を `pureFullAndVerticalRestorationFramesCompose` へ改名し、実2辞書の混線試験を追加|Controller placementCases、M09。workerの応答はfixture、履歴更新は実Controller|
+|LV-05|対応済み：A02をA01へ統合し、同IDの新旧snapshotの全metadata・順序・readAtを比較|`duplicateIDsKeepFirstDescriptionAndNewSnapshotDoesNotMutateOld`。単独の値型確認を削除|
+|GAP-01|自動経路を補強：非空IDから実FrameTracker→実followまで通す|Controller trackerCases、M02/M03。所有PID／同枠／異枠／混在／欠損／無関係menuを確認|
+|GAP-02|自動経路を補強：実AX workerでmodal/minimized/sheet/fullscreen等を判定|AX focusCases、M05。AX属性はfake、IPCは未検証|
+|GAP-03|自動経路を補強：実button/executeへ成功・cannotComplete・failure、読取中取消を注入|AX actionCases/cancellationCases/menuCasesと既存P群。副作用回数を観測、実UI二重クリックではない|
+|GAP-04|恒久入口へ統合：採用済みの取消・配色・追跡・bash条件を通常verifyへ接続|HeaderViewTests、Regression 5群。X03の不採用6ケースは追加しない。X04の監視登録・解除は現行ソース＋fake登録先で検査し、実OS配送とは区別|
+|GAP-05|補強：G04を `testReserveSpaceCalculatesRequestedFrame` へ改名。別token非変更・二段階配置・受理枠を検査|Controller placementCases、AX placementCases。配置成功はfixture契約であり実アプリのサイズ制約受入ではない|
+|GAP-06|補強：実HeaderViewとCoreを24/28/30/34/38ptで実行。hit area・3ボタン・overflow順序・欠落／重複を確認|HeaderViewTestsの最初の3関数、L02/L03/L05。実AppKitの文字幅を使うためOS/font差は残る|
+|GAP-07|補強：通常／上端5pt最大化、drag排他、hidden後の直接mouseUp、down時の初期座標|HeaderViewTestsとgesture 2条件、M06。物理イベントやOSによるhidden view配送は未検証|
+|GAP-08|補強：実witness/AX参照/path検証、MenuCoordinatorの要求世代・再入、MainRunLoop tracking mode|AX menuCases/mainRunLoopCase、Menu 6ケース、Controller completionCases、M07/M08。native NSMenuのkeyboard操作は未検証|
+|GAP-09|補強：実scanへ一覧／属性失敗・不在・再出現を注入し世代と保持／削除を検査|AX scanCases、Controller scanAndTransitionCases。OSの実PID/ID再利用は未検証|
+
+### 補強後の件数と維持するテスト
+
+通常Swift Testingは **6ファイル・61テスト・13 suite**（Core 53/10、App 8/3）。初回57件からsnapshot 2件を1件へ統合し、実HeaderView 5件を追加した。Core単体・FrameTracker起動停止の既存契約は削除していない。新規関数の台帳は次のとおり。
+
+|ID／ファイル|テスト|守るもの／限界|
+|---|---|---|
+|A05 `Tests/TransomAppTests/HeaderViewTests.swift`|`configuredHeightsProduceRealButtonAndDragHitAreas`|5高さの実subview枠・右端・title/control hit。実画面表示はしない|
+|A06 同上|`overflowDeliversEveryHiddenHeadingOnceAndVisibleHeadingSeparately`|visible/overflow別のcallback、順序・重複なし。OS/font差に依存する具体的countあり|
+|A07 同上|`threeControlsInvokeOnlyTheirOwnCallbacks`|minimize/maximize/closeが各1回だけ固有callbackへ。AX送信は別suite|
+|A08 同上|`directTitleSurfaceEventsIncludingHiddenMouseUpStaySeparated`|直接イベントから通常／縦最大化とdragを排他配送。OS配送の保証ではない|
+|A09 同上|`focusedFillAndBaseColorsReachRealButtonTints`|focus/fill/baseのdark/light/reset、close hoverのtint復元。画素描画は未検証|
+
+さらに通常verifyへ **Regression 5群**を追加した。AX 102 assertion、Controller 59 assertion、Menu 6ケース、Gesture 2条件、Shell 2条件が成功。粒度が異なるため61件へ足さず、単一の「総テスト件数」にまとめない。各関数の契約と本番接続・fake境界は [`Tests/Regression/README.md`](../Tests/Regression/README.md) に記録した。
+
+### 実行と検出力
+
+- `bash scripts/verify.sh`が成功：Swift 61件、Regression 5群、両製品build、既存ソース／構成チェック。
+- 隔離コピーだけにM01〜M09を適用し、9件とも意図したassertion失敗（exit 1）を確認。各条件を元に戻してから次を実行し、compile失敗は検出に数えていない。
+- 製品ソースとテストが元に戻ったことをhash比較した隔離コピーで両bundleの生成・署名検証が成功。通常版の差し替え・起動・設定変更は行っていない。
+- 証拠はGit非追跡 `dist/test-reinforcement-20261023/`。結果の詳細は `VALIDATION.md` の同日補強記録を参照。
+
+本番コードをテスト用の再実装へ写す方式ではなく、実行時に現行ソースを読み込む方式を選んだ。DIのための製品リファクタを避けられる一方、Controllerは宣言抽出のため全体起動を網羅しない。生成前のAX API隔離検査とcompile、hash記録でソース乖離を見つける。抽出器は汎用Swift parserではない。
+
+残る制約：実GUI／IPC／実マウス／第三者アプリ／Spaces／他OSとIntelの受入は未実施。旧execute完了はtarget・permitを壊さないが、現在の実装は旧結果もonStatusへ通知する。今回この通知方針は変更しておらず、「古い完了は一切の表示へ影響しない」とは保証しない。初回台帳の手動受入28項目を自動fixtureの成功で完了扱いにしない。
+
+## 初回監査の記録（補強前）
+
 監査日：2026-10-23（JST）。基準コミット：`a94548ef42891b53a5c825376c581b0a6a5297bf`。
 対象はこのコミットの全追跡テストコード、検証スクリプト、Lab、受入項目、および作業ディレクトリに現存した過去の補助試験。テストと製品コードは変更せず、改善候補を記録する監査。
 

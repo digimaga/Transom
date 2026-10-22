@@ -95,14 +95,14 @@ For reports, see [contributing and bug reports](CONTRIBUTING.md). Remove persona
 
 ## Verification status
 
-The latest recorded local verification, on **2026-10-22**, passed **57 tests across 12 suites** and built both apps on macOS 27.0.1 / Apple Silicon. Separate checks covered window-owner identity during tracking with injected WindowServer responses and the verification script under macOS's Bash 3.2. The updated app was not launched for live GUI acceptance. Earlier records cover specific GUI scenarios on macOS 26 and 27.0.1. These results apply to the recorded environments and actions, not every app or OS.
+The latest recorded local verification, on **2026-10-23**, passed **61 tests across 13 suites**, five isolated regression groups, and both app builds on macOS 27.0.1 / Apple Silicon. The regression groups load current production code to check AX control flow, tracking, menu requests, gestures, and Bash 3.2 compatibility without live AX actions. Nine selected mutations were detected by assertions. See the [test audit ledger](docs/TEST_AUDIT.md) for scope and evidence. The apps were not launched for live GUI acceptance. Earlier records cover specific GUI scenarios on macOS 26 and 27.0.1; these results do not guarantee every app or OS.
 
 Multiple displays, Intel hardware, and a complete acceptance rerun on macOS 27 remain unverified. See the dated [validation records](docs/VALIDATION.md) and [acceptance checklist](docs/ACCEPTANCE.md) for individual results. `BUILD_STATUS.json` is the historical 2026-09-16 build snapshot, not the current compatibility summary.
 
 ## Development
 
 ```bash
-# Build both apps, run common-logic tests, and check source/configuration.
+# Build both apps, run unit/isolated regression tests, and check source/configuration.
 bash scripts/verify.sh
 
 # Build the separate app used for manual window/menu verification.

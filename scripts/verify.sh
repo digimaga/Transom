@@ -14,6 +14,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   TOOLCHAIN_PLUGINS="$(dirname "$(dirname "$(xcrun --find swift)")")/lib/swift/host/plugins/testing"
   if [[ -d "$TOOLCHAIN_PLUGINS" ]]; then TEST_ARGS+=(-Xswiftc -plugin-path -Xswiftc "$TOOLCHAIN_PLUGINS"); fi
   xcrun swift "${TEST_ARGS[@]}"
+  python3 scripts/run-regression-tests.py
   echo "macOS build and unit tests completed. GUI/AX/WindowServer still require manual tests."
 else
   swift test

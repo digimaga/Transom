@@ -22,7 +22,7 @@ import Testing
         #expect(!history.matches(Rect(x: -100, y: 100, width: 900, height: 700), verticalOnly: true))
     }
 
-    @Test func fullAndVerticalHistoriesRemainIndependent() {
+    @Test func pureFullAndVerticalRestorationFramesCompose() {
         let verticalFrame = Rect(x: 240, y: 63, width: 680, height: 700)
         let fullFrame = Rect(x: 0, y: 63, width: 1000, height: 700)
         let vertical = MaximizeHistory(original: original, applied: verticalFrame)

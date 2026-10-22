@@ -35,7 +35,7 @@ import Foundation
         // Entirely beside the screen: nothing to show here.
         #expect(Geometry.externalHeader(for: Rect(x: 1500, y: 100, width: 700, height: 500), in: screen) == nil)
     }
-    @Test func testReserveOnlyChangesRequestedWindow() throws {
+    @Test func testReserveSpaceCalculatesRequestedFrame() throws {
         let input = Rect(x: 0, y: 25, width: 700, height: 850)
         let output = try #require(Geometry.reserveSpace(for: input, in: screen))
         #expect(output.y == 55)
@@ -56,8 +56,13 @@ import Foundation
         #expect(Geometry.maximizedFrame(in: Rect(x: 0, y: 0, width: 500, height: 120)) == nil)
     }
     @Test func testReserveRejectsImpossibleScreen() {
-        #expect(Geometry.reserveSpace(for: Rect(x: 0, y: 0, width: 600, height: 500),
-                                      in: Rect(x: 0, y: 0, width: 500, height: 120)) == nil)
+        let adequateScreen = Rect(x: 0, y: 0, width: 500, height: 500)
+        let adequateWindow = Rect(x: 0, y: 60, width: 400, height: 300)
+        #expect(Geometry.reserveSpace(for: adequateWindow, in: adequateScreen) != nil)
+        #expect(Geometry.reserveSpace(for: Rect(x: 0, y: 60, width: 600, height: 300),
+                                      in: adequateScreen) == nil)
+        #expect(Geometry.reserveSpace(for: adequateWindow,
+                                      in: Rect(x: 0, y: 0, width: 500, height: 190)) == nil)
     }
     @Test func testNegativeCoordinateSecondaryDisplay() {
         let secondary = Rect(x: -1920, y: -300, width: 1920, height: 1000)
@@ -71,9 +76,14 @@ import Foundation
                 #expect(Geometry.flip(Geometry.flip(input, primaryHeight: 900), primaryHeight: 900) == input)
             }
         }
+        #expect(Geometry.flip(Rect(x: 100, y: 200, width: 731, height: 422), primaryHeight: 900)
+                == Rect(x: 100, y: 278, width: 731, height: 422))
+        #expect(Geometry.flip(Rect(x: -300, y: -200, width: 731, height: 422), primaryHeight: 900)
+                == Rect(x: -300, y: 678, width: 731, height: 422))
     }
     @Test func testPointerConversionRoundTrip() {
         let input = Point(x: -300, y: 1500)
+        #expect(Geometry.flip(input, primaryHeight: 900) == Point(x: -300, y: -600))
         #expect(Geometry.flip(Geometry.flip(input, primaryHeight: 900), primaryHeight: 900) == input)
     }
     @Test func testBestScreenUsesLargestIntersection() {
@@ -96,8 +106,15 @@ import Foundation
         #expect(Geometry.panelFrame(forHeader: header, backfill: .nan) == header)
     }
     @Test func testInvalidRectRejected() {
-        #expect(Geometry.externalHeader(for: Rect(x: .nan, y: 50, width: 200, height: 200), in: screen) == nil)
-        #expect(Geometry.externalHeader(for: Rect(x: 0, y: 50, width: -20, height: 200), in: screen) == nil)
+        let valid = Rect(x: 100, y: 100, width: 300, height: 200)
+        #expect(Geometry.externalHeader(for: valid, in: screen) != nil)
+        for invalid in [Rect(x: .nan, y: 100, width: 300, height: 200),
+                        Rect(x: 100, y: .infinity, width: 300, height: 200),
+                        Rect(x: 100, y: 100, width: -.infinity, height: 200),
+                        Rect(x: 100, y: 100, width: 0, height: 200),
+                        Rect(x: 100, y: 100, width: 300, height: -1)] {
+            #expect(Geometry.externalHeader(for: invalid, in: screen) == nil)
+        }
     }
 }
 
@@ -111,13 +128,15 @@ import Foundation
     @Test func testNarrowHeaderProvidesOverflow() {
         let layout = HeaderLayout.make(width: 320, appWidth: 140, menuWidths: [50, 50, 70, 80])
         #expect(layout.overflow != nil)
-        #expect(layout.visibleMenuCount < 4)
+        #expect(layout.visibleMenuCount == 0)
+        #expect(layout.menus.isEmpty)
     }
     @Test func testNoOverlappingOrOutOfBoundsControls() {
         for width in stride(from: 280.0, through: 1800.0, by: 13) {
             let layout = HeaderLayout.make(width: width, appWidth: 185, menuWidths: [55, 65, 75, 90, 58, 100])
             let rects = [layout.app] + layout.menus + (layout.overflow.map { [$0] } ?? []) + [layout.title] + layout.controls
             for rect in rects {
+                #expect(rect.x >= 0)
                 #expect(rect.width >= 0)
                 #expect(rect.maxX <= width + 0.01)
             }
@@ -136,12 +155,15 @@ import Foundation
         #expect(narrow.title.x >= overflow.maxX)
     }
     @Test func testWindowControlsSitFlushAtRightEdge() {
-        for width in [280.0, 600, 1800] {
-            let layout = HeaderLayout.make(width: width, appWidth: 130, menuWidths: [50, 50, 70, 80])
+        for height in [24.0, 28, 30, 34, 38] {
+            let width = 600.0
+            let layout = HeaderLayout.make(width: width, height: height, appWidth: 130, menuWidths: [50, 50, 70, 80])
             #expect(layout.controls.count == 3)
             #expect(layout.controls.last?.maxX == width)
             for pair in zip(layout.controls, layout.controls.dropFirst()) { #expect(pair.1.x == pair.0.maxX) }
-            #expect(layout.controls.allSatisfy { $0.width == HeaderLayout.controlWidth && $0.height == 30 })
+            #expect(layout.controls.allSatisfy { $0.width == 40 && $0.height == height })
+            #expect(([layout.app, layout.title] + layout.menus).allSatisfy { $0.height == height })
+            #expect(layout.visibleMenuCount == 4)
             #expect(layout.title.maxX <= layout.controls[0].x)
             #expect((layout.overflow?.maxX ?? layout.menus.last?.maxX ?? layout.app.maxX) <= layout.controls[0].x)
         }
@@ -289,6 +311,9 @@ import Foundation
     @Test func testInterveningForeignWindowRejected() {
         #expect(!OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
                                                  frontToBack: [window(1, 2), window(2, 3), window(10, 99)]))
+        #expect(!OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99,
+            headerFrame: Rect(x: 100, y: 100, width: 500, height: 78),
+            frontToBack: [window(1, 2), window(2, 3, Rect(x: 200, y: 135, width: 100, height: 20)), window(10, 99)]))
     }
     @Test func testForeignWindowInFrontOfBothIsCorrect() {
         #expect(OrderingPolicy.isDirectlyBehind(headerID: 10, targetID: 1, ownPID: 99, headerFrame: header,
